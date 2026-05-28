@@ -1,0 +1,409 @@
+cards.png
+size: 2080, 3880
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+2-hearts
+  rotate: false
+  xy: 4, 4
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+2-diamonds
+  rotate: false
+  xy: 524, 4
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+2-clubs
+  rotate: false
+  xy: 1044, 4
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+2-spades
+  rotate: false
+  xy: 1564, 4
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+3-hearts
+  rotate: false
+  xy: 4, 780
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+3-diamonds
+  rotate: false
+  xy: 524, 780
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+3-clubs
+  rotate: false
+  xy: 1044, 780
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+3-spades
+  rotate: false
+  xy: 1564, 780
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+4-hearts
+  rotate: false
+  xy: 4, 1556
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+4-diamonds
+  rotate: false
+  xy: 524, 1556
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+4-clubs
+  rotate: false
+  xy: 1044, 1556
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+4-spades
+  rotate: false
+  xy: 1564, 1556
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+5-hearts
+  rotate: false
+  xy: 4, 2332
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+5-diamonds
+  rotate: false
+  xy: 524, 2332
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+5-clubs
+  rotate: false
+  xy: 1044, 2332
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+5-spades
+  rotate: false
+  xy: 1564, 2332
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+6-hearts
+  rotate: false
+  xy: 4, 3108
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+6-diamonds
+  rotate: false
+  xy: 524, 3108
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+6-clubs
+  rotate: false
+  xy: 1044, 3108
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+6-spades
+  rotate: false
+  xy: 1564, 3108
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+
+cards2.png
+size: 2080, 3880
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+7-hearts
+  rotate: false
+  xy: 4, 4
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+7-diamonds
+  rotate: false
+  xy: 524, 4
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+7-clubs
+  rotate: false
+  xy: 1044, 4
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+7-spades
+  rotate: false
+  xy: 1564, 4
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+8-hearts
+  rotate: false
+  xy: 4, 780
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+8-diamonds
+  rotate: false
+  xy: 524, 780
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+8-clubs
+  rotate: false
+  xy: 1044, 780
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+8-spades
+  rotate: false
+  xy: 1564, 780
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+9-hearts
+  rotate: false
+  xy: 4, 1556
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+9-diamonds
+  rotate: false
+  xy: 524, 1556
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+9-clubs
+  rotate: false
+  xy: 1044, 1556
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+9-spades
+  rotate: false
+  xy: 1564, 1556
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+10-hearts
+  rotate: false
+  xy: 4, 2332
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+10-diamonds
+  rotate: false
+  xy: 524, 2332
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+10-clubs
+  rotate: false
+  xy: 1044, 2332
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+10-spades
+  rotate: false
+  xy: 1564, 2332
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+jack-hearts
+  rotate: false
+  xy: 4, 3108
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+jack-diamonds
+  rotate: false
+  xy: 524, 3108
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+jack-clubs
+  rotate: false
+  xy: 1044, 3108
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+jack-spades
+  rotate: false
+  xy: 1564, 3108
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+
+cards3.png
+size: 2080, 3104
+format: RGBA8888
+filter: Linear, Linear
+repeat: none
+queen-hearts
+  rotate: false
+  xy: 4, 4
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+queen-diamonds
+  rotate: false
+  xy: 524, 4
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+queen-clubs
+  rotate: false
+  xy: 1044, 4
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+queen-spades
+  rotate: false
+  xy: 1564, 4
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+king-hearts
+  rotate: false
+  xy: 4, 780
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+king-diamonds
+  rotate: false
+  xy: 524, 780
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+king-clubs
+  rotate: false
+  xy: 1044, 780
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+king-spades
+  rotate: false
+  xy: 1564, 780
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+ace-hearts
+  rotate: false
+  xy: 4, 1556
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+ace-diamonds
+  rotate: false
+  xy: 524, 1556
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+ace-clubs
+  rotate: false
+  xy: 1044, 1556
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+ace-spades
+  rotate: false
+  xy: 1564, 1556
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+joker-a
+  rotate: false
+  xy: 4, 2332
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+joker-b
+  rotate: false
+  xy: 524, 2332
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+joker-d
+  rotate: false
+  xy: 1044, 2332
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1
+back
+  rotate: false
+  xy: 1564, 2332
+  size: 512, 768
+  orig: 512, 768
+  offset: 0, 0
+  index: -1

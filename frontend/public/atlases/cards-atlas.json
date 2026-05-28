@@ -1,0 +1,1190 @@
+{
+  "meta": {
+    "app": "makao-generate-sprite-atlas",
+    "image": "cards-atlas.svg",
+    "format": "RGBA8888",
+    "scale": 1,
+    "size": {
+      "w": 4124,
+      "h": 5400
+    }
+  },
+  "frames": [
+    {
+      "filename": "10-clubs.webp",
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "10-diamonds.webp",
+      "frame": {
+        "x": 516,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "10-hearts.webp",
+      "frame": {
+        "x": 1032,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "10-spades.webp",
+      "frame": {
+        "x": 1548,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "2-clubs.webp",
+      "frame": {
+        "x": 2064,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "2-diamonds.webp",
+      "frame": {
+        "x": 2580,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "2-hearts.webp",
+      "frame": {
+        "x": 3096,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "2-spades.webp",
+      "frame": {
+        "x": 3612,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "3-clubs.webp",
+      "frame": {
+        "x": 0,
+        "y": 772,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "3-diamonds.webp",
+      "frame": {
+        "x": 516,
+        "y": 772,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "3-hearts.webp",
+      "frame": {
+        "x": 1032,
+        "y": 772,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "3-spades.webp",
+      "frame": {
+        "x": 1548,
+        "y": 772,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "4-clubs.webp",
+      "frame": {
+        "x": 2064,
+        "y": 772,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "4-diamonds.webp",
+      "frame": {
+        "x": 2580,
+        "y": 772,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "4-hearts.webp",
+      "frame": {
+        "x": 3096,
+        "y": 772,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "4-spades.webp",
+      "frame": {
+        "x": 3612,
+        "y": 772,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "5-clubs.webp",
+      "frame": {
+        "x": 0,
+        "y": 1544,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "5-diamonds.webp",
+      "frame": {
+        "x": 516,
+        "y": 1544,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "5-hearts.webp",
+      "frame": {
+        "x": 1032,
+        "y": 1544,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "5-spades.webp",
+      "frame": {
+        "x": 1548,
+        "y": 1544,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "6-clubs.webp",
+      "frame": {
+        "x": 2064,
+        "y": 1544,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "6-diamonds.webp",
+      "frame": {
+        "x": 2580,
+        "y": 1544,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "6-hearts.webp",
+      "frame": {
+        "x": 3096,
+        "y": 1544,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "6-spades.webp",
+      "frame": {
+        "x": 3612,
+        "y": 1544,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "7-clubs.webp",
+      "frame": {
+        "x": 0,
+        "y": 2316,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "7-diamonds.webp",
+      "frame": {
+        "x": 516,
+        "y": 2316,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "7-hearts.webp",
+      "frame": {
+        "x": 1032,
+        "y": 2316,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "7-spades.webp",
+      "frame": {
+        "x": 1548,
+        "y": 2316,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "8-clubs.webp",
+      "frame": {
+        "x": 2064,
+        "y": 2316,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "8-diamonds.webp",
+      "frame": {
+        "x": 2580,
+        "y": 2316,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "8-hearts.webp",
+      "frame": {
+        "x": 3096,
+        "y": 2316,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "8-spades.webp",
+      "frame": {
+        "x": 3612,
+        "y": 2316,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "9-clubs.webp",
+      "frame": {
+        "x": 0,
+        "y": 3088,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "9-diamonds.webp",
+      "frame": {
+        "x": 516,
+        "y": 3088,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "9-hearts.webp",
+      "frame": {
+        "x": 1032,
+        "y": 3088,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "9-spades.webp",
+      "frame": {
+        "x": 1548,
+        "y": 3088,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "ace-clubs.webp",
+      "frame": {
+        "x": 2064,
+        "y": 3088,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "ace-diamonds.webp",
+      "frame": {
+        "x": 2580,
+        "y": 3088,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "ace-hearts.webp",
+      "frame": {
+        "x": 3096,
+        "y": 3088,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "ace-spades.webp",
+      "frame": {
+        "x": 3612,
+        "y": 3088,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "back.webp",
+      "frame": {
+        "x": 0,
+        "y": 3860,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "jack-clubs.webp",
+      "frame": {
+        "x": 516,
+        "y": 3860,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "jack-diamonds.webp",
+      "frame": {
+        "x": 1032,
+        "y": 3860,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "jack-hearts.webp",
+      "frame": {
+        "x": 1548,
+        "y": 3860,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "jack-spades.webp",
+      "frame": {
+        "x": 2064,
+        "y": 3860,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "joker-a.webp",
+      "frame": {
+        "x": 2580,
+        "y": 3860,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "joker-b.webp",
+      "frame": {
+        "x": 3096,
+        "y": 3860,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "joker-d.webp",
+      "frame": {
+        "x": 3612,
+        "y": 3860,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "king-clubs.webp",
+      "frame": {
+        "x": 0,
+        "y": 4632,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "king-diamonds.webp",
+      "frame": {
+        "x": 516,
+        "y": 4632,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "king-hearts.webp",
+      "frame": {
+        "x": 1032,
+        "y": 4632,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "king-spades.webp",
+      "frame": {
+        "x": 1548,
+        "y": 4632,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "queen-clubs.webp",
+      "frame": {
+        "x": 2064,
+        "y": 4632,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "queen-diamonds.webp",
+      "frame": {
+        "x": 2580,
+        "y": 4632,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "queen-hearts.webp",
+      "frame": {
+        "x": 3096,
+        "y": 4632,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "filename": "queen-spades.webp",
+      "frame": {
+        "x": 3612,
+        "y": 4632,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    }
+  ]
+}

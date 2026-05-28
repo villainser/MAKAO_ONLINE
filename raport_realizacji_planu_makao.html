@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Raport realizacji planu Makao</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #1c2430;
+      --muted: #5d6878;
+      --line: #d8dde5;
+      --done: #d8f1df;
+      --done-ink: #145c2c;
+      --partial: #fff1c7;
+      --partial-ink: #705200;
+      --missing: #f7d7d7;
+      --missing-ink: #842424;
+      --fix: #dde8ff;
+      --fix-ink: #244f9e;
+      --diverge: #eadcff;
+      --diverge-ink: #5a3291;
+      --neutral: #eef1f5;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    header {
+      background: #172033;
+      color: white;
+      padding: 32px 24px;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    h1, h2, h3 {
+      line-height: 1.2;
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 1180px;
+      margin: 0 auto;
+      font-size: 34px;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin-top: 32px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+      font-size: 24px;
+    }
+
+    h3 {
+      margin-top: 20px;
+      font-size: 18px;
+    }
+
+    p { margin: 8px 0; }
+
+    ul {
+      margin: 8px 0 0 20px;
+      padding: 0;
+    }
+
+    li { margin: 4px 0; }
+
+    code {
+      background: var(--neutral);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      background: var(--panel);
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #eef1f5;
+      font-weight: 700;
+    }
+
+    .meta {
+      max-width: 1180px;
+      margin: 12px auto 0;
+      color: #dbe4f0;
+      font-size: 14px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      margin: 16px 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 12px;
+    }
+
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 24px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      border-radius: 999px;
+      padding: 2px 9px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .done { background: var(--done); color: var(--done-ink); }
+    .partial { background: var(--partial); color: var(--partial-ink); }
+    .missing { background: var(--missing); color: var(--missing-ink); }
+    .fix { background: var(--fix); color: var(--fix-ink); }
+    .diverge { background: var(--diverge); color: var(--diverge-ink); }
+
+    .section-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      margin: 14px 0;
+    }
+
+    .section-title {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .cols {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .priority {
+      font-weight: 700;
+    }
+
+    .toc a {
+      color: #244f9e;
+      text-decoration: none;
+    }
+
+    .toc a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Raport realizacji planu gry Makao</h1>
+    <div class="meta">
+      Data raportu: 2026-05-17. Plan źródłowy:
+      <code>/home/villains/Dokumenty/MAKAO/koncept_makao_ze_znajomymi_wersja_scalona_doprecyzowana.md</code>.
+      Projekt: <code>/home/villains/Dokumenty/MAKAO</code>.
+    </div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2 id="podsumowanie">Podsumowanie</h2>
+      <p>
+        Projekt ma już działający webowy prototyp Makao z pokojami prywatnymi, lobby, socket.io,
+        autorytatywnym silnikiem po stronie Node.js i sporą częścią reguł kart funkcyjnych. Rdzeń gry
+        jest grywalny w testach ręcznych, ale nie jest jeszcze zgodny z całym planem MVP. Największe
+        braki dotyczą jokerów, sortowania i grupowania ręki, pełnego reconnectu, zapisu stanu, logów,
+        narzędzi hosta oraz kilku szczegółów reguł kar.
+      </p>
+      <div class="grid">
+        <div class="metric">
+          <strong>Grywalne</strong>
+          Pokoje prywatne, start partii, dobieranie, zagrywanie, Makao, część końca gry.
+        </div>
+        <div class="metric">
+          <strong>Najpilniejsze</strong>
+          Król bitewny vs 2/3 w tym samym kolorze, Makao po dobraniu grywalnej karty, sortowanie ręki.
+        </div>
+        <div class="metric">
+          <strong>Największe braki</strong>
+          Joker, reconnect z tokenem, trwały zapis, log zdarzeń, host admin tools.
+        </div>
+        <div class="metric">
+          <strong>Weryfikacja</strong>
+          Ostatnio odnotowane: backend testy przechodziły, frontend lint/build przechodziły.
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 id="legenda">Legenda statusów</h2>
+      <p>
+        <span class="badge done">Zrobione</span>
+        <span class="badge partial">Częściowo</span>
+        <span class="badge missing">Brak</span>
+        <span class="badge fix">Do poprawy</span>
+        <span class="badge diverge">Rozbieżność z planem</span>
+      </p>
+    </section>
+
+    <section class="panel toc">
+      <h2 id="spis">Spis treści</h2>
+      <ul>
+        <li><a href="#sekcje-planu">Ocena punkt po punkcie według planu 1-21</a></li>
+        <li><a href="#priorytety">Priorytety prac</a></li>
+        <li><a href="#dzialanie-teraz">Jak działa gra teraz</a></li>
+        <li><a href="#pliki">Główne pliki projektu</a></li>
+      </ul>
+    </section>
+
+    <section id="sekcje-planu">
+      <h2>Ocena Punkt Po Punkcie</h2>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>1. Założenie główne</h3>
+          <span class="badge partial">Częściowo</span>
+        </div>
+        <div class="cols">
+          <div>
+            <p><strong>W planie:</strong> gra Makao ze znajomymi, pokoje prywatne, brak matchmakingu, brak botów, serwer pilnuje zasad.</p>
+            <p><strong>Co mamy:</strong> webowy prototyp działa jako gra ze znajomymi przez kod pokoju. Silnik backendowy waliduje ruchy i rozsyła widok stanu.</p>
+          </div>
+          <div>
+            <p><strong>Do poprawy:</strong> brakuje docelowego klienta Android/PWA, trwałości sesji, reconnectu i części reguł z planu.</p>
+            <p class="priority">Priorytet: P1, bo rdzeń gry istnieje, ale produkt nie ma jeszcze odporności sesji.</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>2. Czego aplikacja nie robi</h3>
+          <span class="badge done">Zrobione</span>
+          <span class="badge diverge">Uwaga</span>
+        </div>
+        <p><strong>Co mamy:</strong> brak botów, brak matchmakingu, brak zastępowania gracza przez AI. To jest zgodne z planem.</p>
+        <p><strong>Uwaga:</strong> gra automatycznie dobiera kartę, gdy aktywny gracz nie ma legalnej karty i nie trwa wojna. To było później ustalone w testach jako wygoda rozgrywki, ale w planie sekcja 16.8 zabrania automatycznego ruchu za rozłączonego lub nieobecnego gracza. Trzeba pilnować rozróżnienia: auto-dobranie dla obecnego gracza jest OK tylko jako jawna reguła gry, ale nie może zastąpić decyzji offline gracza.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>3. Pokoje prywatne</h3>
+          <span class="badge partial">Częściowo</span>
+        </div>
+        <p><strong>Co mamy:</strong> tworzenie pokoju, dołączanie kodem, lobby, status gotowości, host startuje grę, host może ustawić talie/jokery/warianty przed startem.</p>
+        <p><strong>Jak działa teraz:</strong> pokój jest trzymany w pamięci procesu serwera. Klient łączy się przez socket.io, a serwer wysyła aktualny stan pokoju i gry.</p>
+        <ul>
+          <li><strong>Brak:</strong> nazwa pokoju, maksymalna liczba graczy, link zaproszenia, widoczny panel uprawnień hosta.</li>
+          <li><strong>Brak:</strong> narzędzia hosta: pauza pokoju, wznowienie, usuwanie gracza, transfer hosta jako akcja UI, administracyjne zakończenie partii.</li>
+          <li><strong>Brak:</strong> publiczna historia decyzji hosta i osobny <code>admin_log</code>.</li>
+        </ul>
+        <p class="priority">Priorytet: P1 dla reconnectu/hosta, P2 dla linków i kosmetyki lobby.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>4. Liczba talii</h3>
+          <span class="badge done">Zrobione</span>
+        </div>
+        <p><strong>Co mamy:</strong> silnik tworzy 1-3 talie, karta ma unikalny identyfikator z numerem talii, UI pozwala hostowi wybrać liczbę talii, a backend pilnuje górnego limitu.</p>
+        <p><strong>Sugestia:</strong> system proponuje 1 talię dla maksymalnie 4 gotowych graczy, 2 talie dla 5-7 gotowych graczy i 3 talie dla 8 gotowych graczy. Host może przyjąć sugestię albo ustawić liczbę talii ręcznie.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>5. Czas gry</h3>
+          <span class="badge missing">Brak</span>
+        </div>
+        <p><strong>W planie:</strong> domyślnie brak limitu czasu, opcjonalne limity i widoczna informacja „Brak limitu czasu”.</p>
+        <p><strong>Stan:</strong> brak systemu limitu czasu, brak ustawienia w lobby, brak komunikatu w stole.</p>
+        <p class="priority">Priorytet: P2, chyba że testy ze znajomymi pokażą, że bezczynność blokuje grę.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>6. Stałe zasady bazowe</h3>
+          <span class="badge partial">Częściowo</span>
+          <span class="badge diverge">Rozbieżność</span>
+        </div>
+        <p><strong>Co mamy:</strong> większość bazowych kart jest zaimplementowana: 2, 3, 4, as, walet, dama, króle czerwone/czarne bitewne, król trefl/karo jako zwykłe, Makao, multi-card.</p>
+        <p><strong>Rozbieżność:</strong> plan mówi, że host nie powinien zmieniać działania bazowych kart w aktywnej partii. W projekcie istnieje ustawienie <code>kingPenaltyUnblockable</code> i wariant damy. Wariant damy jest opisany w planie, ale „nieblokowalny król” wymaga decyzji, czy zostaje jako opcja pokoju, czy usuwamy go z MVP.</p>
+        <p><strong>Brak:</strong> pełna deklaracja jokera jako konkretnej karty/efektu.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>7. Rozdanie i start gry</h3>
+          <span class="badge partial">Częściowo</span>
+        </div>
+        <p><strong>Co mamy:</strong> 5 kart na start, serwer tasuje i rozdaje, karta startowa jest niefunkcyjna, pierwszy gracz jest losowany, a nie zawsze host.</p>
+        <ul>
+          <li><strong>Brak:</strong> rotacja pierwszego gracza w kolejnych partiach.</li>
+          <li><strong>Brak:</strong> wybór pierwszego gracza przez hosta jako opcja.</li>
+          <li><strong>Brak:</strong> technicznie widoczny log odkładania funkcyjnych kart startowych na spód talii.</li>
+          <li><strong>Do sprawdzenia:</strong> plan wymaga 2-6 osób, trzeba jasno zablokować lub obsłużyć limity w UI i backendzie.</li>
+        </ul>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>7.5. Jokery</h3>
+          <span class="badge missing">Brak</span>
+          <span class="badge partial">Szkielet</span>
+        </div>
+        <p><strong>Co mamy:</strong> opcja dodania jokerów do talii i podstawowe traktowanie jokera jako karty pasującej.</p>
+        <p><strong>Brak:</strong> po zagraniu joker musi dostać deklarację, czym jest: 2, 3, 4, as, walet, król, dama albo zwykła karta. Nie ma UI deklaracji jokera, nie ma <code>joker_declaration</code>, nie ma testów dla ostatniego jokera.</p>
+        <p class="priority">Priorytet: P0/P1. Jeśli jokery zostają w MVP, to aktualny stan jest za mały. Alternatywa: wyłączyć jokery w MVP i oznaczyć jako post-MVP.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>8.1. Dwójki i trójki</h3>
+          <span class="badge partial">Częściowo</span>
+        </div>
+        <p><strong>Co mamy:</strong> 2 daje +2, 3 daje +3, kary kumulują się jako <code>draw_penalty</code>, gracz może przyjąć karę albo przebić kartą bitewną.</p>
+        <p><strong>Do poprawy:</strong> zachowanie po dobraniu w aktywnej karze nie jest zgodne z planem. Plan w sekcji 8.6 i 18.4.6 mówi, że karty dobrane jako kara nie są od razu zagrywane jako odpowiedź na tę samą karę. Obecny kod/testy dopuszczają scenariusz, w którym pierwsza dobrana karta może zostawić okno odpowiedzi, jeśli pasuje.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>8.1.1. Wojna karna</h3>
+          <span class="badge fix">Do poprawy</span>
+        </div>
+        <p><strong>Co mamy:</strong> aktywna kara ma kwotę, cel, źródła i kolor wojny. Króle bitewne dokładają +5 i zmieniają kierunek ataku zgodnie z ostatnim królem.</p>
+        <p><strong>Błąd z testów ręcznych:</strong> po zagraniu <code>K pik</code> gracz z <code>3 pik</code> nie mógł odpowiedzieć. Według planu 2/3 w kolorze wojny powinny móc przebić karę. Trzeba sprawdzić wspólną funkcję legalności i filtrowanie kart w UI dla <code>DRAW_PENALTY</code> z <code>battleSuit</code>.</p>
+        <p class="priority">Priorytet: P0, bo to łamie podstawową wojnę karną.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>8.2. Czwórki</h3>
+          <span class="badge done">Zrobione</span>
+          <span class="badge partial">UX częściowo</span>
+        </div>
+        <p><strong>Co mamy:</strong> 4 ustawia pauzę wskazanemu graczowi, pauzy kumulują się, gracz może odpowiedzieć 4, jeśli ma legalną odpowiedź. System rozlicza pauzy automatycznie i pokazuje liczniki przy graczach.</p>
+        <p><strong>Jak działa teraz:</strong> nie ma przycisku „przyjmij pauzę”. Jeśli gracz nie może odpowiedzieć 4, silnik automatycznie zużywa pauzę i przechodzi do następnego gracza.</p>
+        <p><strong>Do poprawy:</strong> komunikaty są już poprawiane, ale trzeba dalej pilnować, aby stare komunikaty pauzy znikały po realnym ruchu i żeby wszyscy widzieli, kto pauzuje oraz czyja tura jest po pominięciu.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>8.3. Asy</h3>
+          <span class="badge partial">Częściowo</span>
+        </div>
+        <p><strong>Co mamy:</strong> as może żądać koloru albo zostać zagrany z opcją „Bez żądania”. UI pokazuje modal wyboru, backend trzyma <code>suit_request</code>.</p>
+        <p><strong>Do poprawy:</strong> brakuje pełnej listy testów dla kilku asów w jednym ruchu, ostatniego asa i przypadków reconnectu w trakcie żądania.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>8.4. Walety</h3>
+          <span class="badge partial">Częściowo</span>
+        </div>
+        <p><strong>Co mamy:</strong> walet może żądać wartości 5-10 albo „Bez żądania”. Backend trzyma <code>rank_request</code>, dama może przerwać żądanie.</p>
+        <p><strong>Do poprawy:</strong> narzędzie testowe socketowe nie obsługuje jeszcze wygodnej składni typu <code>play JACK♠ 5</code>, co utrudnia ręczne testy. Trzeba też dopilnować walidacji multi-waletów i końca gry na walecie.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>8.5. Króle</h3>
+          <span class="badge fix">Do poprawy</span>
+        </div>
+        <p><strong>Co mamy:</strong> król kier atakuje do przodu +5, król pik przy dwóch graczach działa jak atak na przeciwnika, przy większej liczbie powinien atakować poprzedniego. Król trefl i karo są zwykłe.</p>
+        <ul>
+          <li><strong>Do poprawy:</strong> błąd odpowiedzi <code>3 pik</code> na <code>K pik</code>.</li>
+          <li><strong>Do sprawdzenia:</strong> wszystkie kierunki przy 3+ graczach, szczególnie gdy ktoś już skończył i jest usunięty z <code>turnOrder</code>.</li>
+          <li><strong>Decyzja:</strong> czy opcja nieblokowalnego króla zostaje, skoro plan bazowy mówi o stałych zasadach.</li>
+        </ul>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>8.6. Dobranie i natychmiastowe zagranie</h3>
+          <span class="badge partial">Częściowo</span>
+          <span class="badge diverge">Rozbieżność</span>
+        </div>
+        <p><strong>Co mamy:</strong> po normalnym dobraniu, jeśli karta jest legalna, gracz może ją zagrać albo zostawić. Jeśli karta nie pasuje, tura przechodzi dalej. Po dobraniu legalnej karty można też dołożyć inne karty tej samej wartości.</p>
+        <p><strong>Rozbieżność:</strong> przy aktywnej karze obecny system potrafi pozwolić na odpowiedź dobraną kartą. Plan mówi odwrotnie: dobranie kary oznacza przyjęcie kary i dobranych kart nie zagrywa się od razu jako odpowiedzi na tę samą karę.</p>
+        <p class="priority">Priorytet: P0 do decyzji reguły. Albo zmienić kod do planu, albo świadomie zaktualizować plan.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>9. Dama</h3>
+          <span class="badge partial">Częściowo</span>
+        </div>
+        <p><strong>Co mamy:</strong> dama działa jako karta „na wszystko i wszystko na damę” poza aktywną karą. Dama przerywa żądanie asa/waleta. Wariant warszawski dla Q kier/pik może anulować karę.</p>
+        <p><strong>Do poprawy:</strong> testy i UI powinny jasno pokazywać, kiedy dama nie chroni przed aktywną karą. Trzeba też sprawdzić, czy dama w ruchu wielokartowym nie miesza się z innymi wartościami.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>10. Zagrywanie wielu kart</h3>
+          <span class="badge partial">Częściowo</span>
+        </div>
+        <p><strong>Co mamy:</strong> można zagrać wiele kart tej samej wartości. Serwer akceptuje ruch, jeśli dowolna z wybranych kart może legalnie rozpocząć ruch, a wszystkie mają tę samą wartość. Ostatnia kliknięta karta zostaje na wierzchu.</p>
+        <p><strong>Naprawione wcześniej:</strong> przypadek <code>K karo</code> legalny na stole i dołożenie <code>K trefl</code> oraz przypadek dobranej <code>10 trefl</code> plus <code>10 karo</code>.</p>
+        <p><strong>Do poprawy:</strong> brak przycisku „rzuć wszystkie” dla grupy, brak grupowania duplikatów, brak pełnych testów dla wielu asów/waletów i ostatniego ruchu multi-card do jednej karty lub zera kart.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>11. Sortowanie kart</h3>
+          <span class="badge missing">Brak</span>
+        </div>
+        <p><strong>W planie:</strong> sortowanie od 2 do jokera, stabilny porządek kolorów, obsługa wielu talii i duplikatów.</p>
+        <p><strong>Stan:</strong> ręka zostaje w kolejności rozdania/dobrania. To zostało zgłoszone w testach ręcznych.</p>
+        <p><strong>Wymagany porządek:</strong> <code>2, 3, 4, 5, 6, 7, 8, 9, 10, J, Q, K, A, Joker</code>, z ustalonym sortowaniem kolorów w ramach tej samej wartości.</p>
+        <p class="priority">Priorytet: P1, bo przy wielu taliach bez sortowania ręka szybko staje się nieczytelna.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>12. Liczenie kart, stan i logi</h3>
+          <span class="badge partial">Częściowo</span>
+          <span class="badge missing">Brak logów</span>
+        </div>
+        <p><strong>Co mamy:</strong> serwer śledzi ręce, stos dobierania, stos zagranych, top card, activeEffect, tury, Makao, skipTurns, turnEvents. Klienci widzą liczbę kart przeciwników, nie widzą ich ręki.</p>
+        <ul>
+          <li><strong>Brak:</strong> trwała historia ruchów i publiczny log partii.</li>
+          <li><strong>Brak:</strong> admin log, usuwanie logów po potwierdzeniu hasłem.</li>
+          <li><strong>Brak:</strong> <code>state_version</code>, delta updates, snapshoty.</li>
+          <li><strong>Do poprawy:</strong> komunikaty zdarzeń są przejściowe i nie zastępują pełnej historii.</li>
+        </ul>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>13. Przetasowanie stosu</h3>
+          <span class="badge partial">Częściowo</span>
+        </div>
+        <p><strong>Co mamy:</strong> silnik ma mechanizm uzupełniania stosu dobierania z kart zagranych, zostawiając kartę wierzchnią.</p>
+        <p><strong>Brak:</strong> plan wymaga po przetasowaniu wyboru neutralnej, niefunkcyjnej karty stołu i jasnego zachowania, gdy neutralnej karty nie ma. Tego nie ma w pełni opisanego ani pokrytego testami.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>14. Makao</h3>
+          <span class="badge partial">Częściowo</span>
+          <span class="badge fix">Do poprawy</span>
+        </div>
+        <p><strong>Co mamy:</strong> ręczne Makao, łapanie gracza, 5 sekund okna, kara +5, brak wymogu Makao przy zagraniu wszystkich kart i końcu gry.</p>
+        <ul>
+          <li><strong>Do poprawy:</strong> przycisk Makao nie pojawia się po auto-dobraniu grywalnej karty, gdy zagranie tej karty zostawiłoby jedną kartę.</li>
+          <li><strong>Do sprawdzenia:</strong> Makao po ruchu wielokartowym z większej liczby kart do jednej.</li>
+          <li><strong>Do poprawy:</strong> klasyfikacja miejsc w grze 3+ graczy jest tylko częściowa. Dla 2 graczy koniec gry działa.</li>
+        </ul>
+        <p class="priority">Priorytet: P0/P1. To widoczna reguła gry i użytkownik już ją złapał w testach.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>15. Mobile UI i widok stołu</h3>
+          <span class="badge partial">Częściowo</span>
+        </div>
+        <p><strong>Co mamy:</strong> podstawowy stół webowy z ręką gracza, przeciwnikami, stosem, dobieraniem, komunikatami i modalami wyboru żądania.</p>
+        <ul>
+          <li><strong>Brak:</strong> przycisk sortowania, menu pokoju, kompaktowy widok ręki, grupowanie duplikatów, podgląd karty po przytrzymaniu.</li>
+          <li><strong>Do poprawy:</strong> podpowiedzi legalnych kart muszą bazować na pełnym stanie, nie tylko top card.</li>
+          <li><strong>Do poprawy:</strong> UI powinien wyraźniej pokazywać sumę kary, aktywne żądanie, pauzy, status online/offline, gotowość.</li>
+        </ul>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>16. Pauza, rozłączenia, zapis i powrót</h3>
+          <span class="badge missing">Brak</span>
+          <span class="badge partial">Częściowo dla disconnect</span>
+        </div>
+        <p><strong>Co mamy:</strong> podstawowa obsługa rozłączenia usuwa gracza z aktywnej kolejki, sprząta część stanu Makao/pauzy i host może zostać przeniesiony przy rozłączeniu.</p>
+        <p><strong>Brak:</strong> ręczna pauza „Zaraz wracam”, pauza gry po rozłączeniu aktywnego gracza, powrót tym samym tokenem, odtworzenie ręki, zapis po ruchu, snapshoty, trwałość pokoju, bezpieczeństwo przejęcia miejsca, decyzje hosta przy graczu offline.</p>
+        <p><strong>Ryzyko:</strong> obecne usuwanie gracza z trwającej gry pozwala kontynuować testy, ale nie realizuje założenia „gracz może wrócić do tej samej partii”.</p>
+        <p class="priority">Priorytet: P1 przed szerszym testowaniem ze znajomymi.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>17. Backend</h3>
+          <span class="badge partial">Częściowo</span>
+        </div>
+        <p><strong>Co mamy:</strong> serwer Node.js z socket.io jest autorytatywny dla gry. Klient wysyła intencje, serwer waliduje i rozsyła widoki. Reguły są skoncentrowane w <code>backend/GameEngine.js</code>.</p>
+        <ul>
+          <li><strong>Brak:</strong> REST API dla kont/pokojów/historii.</li>
+          <li><strong>Brak:</strong> PostgreSQL, Redis, storage/CDN.</li>
+          <li><strong>Brak:</strong> <code>state_version</code>, delta updates, snapshoty i event log.</li>
+          <li><strong>Do poprawy:</strong> część wspólnej logiki istnieje równolegle w backendzie i frontendzie, co może rozjeżdżać podpowiedzi z walidacją serwera.</li>
+        </ul>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>17.6-17.11. ID kart, activeEffect i model stanów</h3>
+          <span class="badge partial">Częściowo</span>
+        </div>
+        <p><strong>Zrobione:</strong> unikalne ID kart z talią, osobny <code>activeEffect</code>, rozdzielenie top card od aktywnego efektu, podstawowe typy efektów: kara, żądanie koloru, żądanie wartości, pauza.</p>
+        <p><strong>Brak:</strong> <code>joker_declaration</code>, formalny model stanów <code>LOBBY/IN_PROGRESS/PAUSED/FINISHED</code>, wersjonowanie każdej akcji i reconnect przez delty.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>18. Silnik zasad</h3>
+          <span class="badge partial">Częściowo</span>
+        </div>
+        <p><strong>Co mamy:</strong> oddzielny silnik backendowy z testami automatycznymi dla wielu przypadków: 4, kary, Makao, losowy pierwszy gracz, koniec gry w 2 osoby, auto-dobieranie i czyszczenie komunikatów.</p>
+        <p><strong>Do poprawy:</strong> UI powinien korzystać z tej samej listy legalnych akcji co serwer, najlepiej przez generowane <code>legalActions</code>. Teraz ryzyko błędów jest widoczne w sprawie <code>3 pik</code> na <code>K pik</code>.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>18.4. Scenariusze testowe</h3>
+          <span class="badge partial">Częściowo</span>
+        </div>
+        <p><strong>Co mamy:</strong> istnieje zestaw testów backendowych i wiele regresji dodanych po ręcznych testach.</p>
+        <p><strong>Brakujące grupy testów:</strong> pełne wojny królami przy 3+ graczach, ostatnia karta jako as/walet/joker, wiele asów/waletów, pełne warianty damy, dobranie kary zgodne z planem, reconnect i host, sortowanie/grupowanie jako logika prezentacji.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>19. MVP</h3>
+          <span class="badge partial">Częściowo</span>
+        </div>
+        <p><strong>Gotowe z MVP:</strong> webowy prototyp, pokoje prywatne kodem, lobby, gotowość, start przez hosta, 5 kart, serwerowy krupier, brak botów, część kart funkcyjnych, multi-card, unikalne ID kart, część Makao, część testów.</p>
+        <p><strong>Niegotowe z MVP:</strong> Android/PWA jako docelowy klient, link zaproszenia, 2-6 jako twardy limit, sugestia liczby talii, limity czasu, pełne jokery, sortowanie, logi, przetasowanie z neutralną kartą, reconnect, zapis po ruchu, pauza ręczna, narzędzia hosta, pełna klasyfikacja miejsc i pełny zestaw testów granicznych.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>20. Funkcje po MVP</h3>
+          <span class="badge missing">Brak</span>
+        </div>
+        <p><strong>Stan:</strong> iOS, konta, znajomi, zapisane zestawy zasad, historia partii, eksport historii, obserwatorzy, skórki i tryb kompaktowy nie są zaimplementowane. To jest zgodne z tym, że plan klasyfikuje je jako po MVP.</p>
+      </article>
+
+      <article class="section-card">
+        <div class="section-title">
+          <h3>21. Decyzje doprecyzowane i otwarte</h3>
+          <span class="badge partial">Częściowo</span>
+        </div>
+        <p><strong>Potwierdzone w implementacji:</strong> dama kończy żądanie, żądania asa/waleta mają opcję „Bez żądania”, Makao tylko przy zejściu do jednej karty, activeEffect jest osobny od topCard, multi-card tylko jednej wartości.</p>
+        <p><strong>Wymagają decyzji:</strong> joker w MVP czy po MVP, nieblokowalny król jako opcja czy usunięcie, obecna reguła dobrania w aktywnej karze vs zapis planu, trwałość zakończonych gier, konta vs nick+token, technologia klienta docelowego.</p>
+      </article>
+    </section>
+
+    <section id="priorytety" class="panel">
+      <h2>Priorytety Prac</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Priorytet</th>
+            <th>Temat</th>
+            <th>Dlaczego</th>
+            <th>Oczekiwany efekt</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="badge fix">P0</span></td>
+            <td>Odpowiedź 2/3 na króla bitewnego w tym samym kolorze</td>
+            <td>Ręczny test wykazał, że <code>3 pik</code> nie mogła odpowiedzieć na <code>K pik</code>.</td>
+            <td>Wojna karna zgodna z planem dla króli, 2 i 3.</td>
+          </tr>
+          <tr>
+            <td><span class="badge diverge">P0</span></td>
+            <td>Reguła dobierania przy aktywnej karze</td>
+            <td>Plan mówi, że dobrane karty z kary nie mogą odpowiedzieć na tę samą karę, a obecny flow częściowo pozwala.</td>
+            <td>Jedna jasna reguła w kodzie, UI, testach i planie.</td>
+          </tr>
+          <tr>
+            <td><span class="badge fix">P0/P1</span></td>
+            <td>Makao po dobraniu grywalnej karty</td>
+            <td>Przycisk Makao ma pojawić się, jeśli zagranie dobranej karty zostawi jedną kartę.</td>
+            <td>Makao liczone z możliwego pending play, nie tylko z ręki przed dobraniem.</td>
+          </tr>
+          <tr>
+            <td><span class="badge missing">P1</span></td>
+            <td>Sortowanie i grupowanie ręki</td>
+            <td>Przy wielu taliach ręka bez sortowania jest trudna do grania.</td>
+            <td>Porządek 2 -> Joker, stabilne kolory, grupy duplikatów i opcja „rzuć wszystkie”.</td>
+          </tr>
+          <tr>
+            <td><span class="badge missing">P1</span></td>
+            <td>Jokery albo ich wyłączenie z MVP</td>
+            <td>W talii mogą być jokery, ale nie ma deklaracji ich efektu.</td>
+            <td>Pełny <code>joker_declaration</code> albo jawnie ukryta opcja jokerów do czasu implementacji.</td>
+          </tr>
+          <tr>
+            <td><span class="badge missing">P1</span></td>
+            <td>Reconnect, token sesji i pauza offline</td>
+            <td>Plan zakłada powrót do tej samej ręki, a obecnie rozłączenie raczej usuwa gracza z gry.</td>
+            <td>Bezpieczny powrót gracza do pokoju i aktywnej partii.</td>
+          </tr>
+          <tr>
+            <td><span class="badge missing">P1</span></td>
+            <td>Historia ruchów, admin log, state_version</td>
+            <td>Bez logu trudno debugować sporne sytuacje i odtwarzać stan.</td>
+            <td>Event log, snapshoty i numer wersji stanu.</td>
+          </tr>
+          <tr>
+            <td><span class="badge partial">P2</span></td>
+            <td>Mobile UI i komunikaty</td>
+            <td>Gra jest czytelna w prototypie, ale plan wymaga bogatszego widoku mobilnego.</td>
+            <td>Lepszy layout stołu, statusy, kompaktowa ręka, menu pokoju.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="dzialanie-teraz" class="panel">
+      <h2>Jak Działa Gra Teraz</h2>
+      <ul>
+        <li>Użytkownik tworzy pokój, inni dołączają kodem, gracze klikają gotowość, host startuje.</li>
+        <li>Serwer tasuje wybrane talie, rozdaje po 5 kart, wybiera niefunkcyjną kartę startową i losuje pierwszego gracza.</li>
+        <li>Klient pokazuje rękę, stos, przeciwników i komunikaty. Ruchy idą przez socket.io do serwera.</li>
+        <li>Serwer waliduje ruchy, pilnuje <code>activeEffect</code>, aktualizuje ręce, stosy, kolejkę i rozsyła widoki.</li>
+        <li>Przy braku legalnego ruchu w zwykłej turze gra potrafi dobrać automatycznie jedną kartę i, jeśli jest grywalna, zostawić decyzję graczowi.</li>
+        <li>Przy 4 pauza jest liczona automatycznie jako licznik tur do stracenia, widoczny przy graczu.</li>
+        <li>Przy końcu gry w 2 osoby backend ustawia <code>gameOver</code> i <code>winnerId</code>, a UI pokazuje zwycięzcę.</li>
+      </ul>
+    </section>
+
+    <section id="pliki" class="panel">
+      <h2>Główne Pliki Projektu</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Plik</th>
+            <th>Rola</th>
+            <th>Uwagi</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>backend/GameEngine.js</code></td>
+            <td>Główna logika zasad, talie, tury, efekty, Makao, koniec gry.</td>
+            <td>Najważniejsze miejsce do poprawek P0.</td>
+          </tr>
+          <tr>
+            <td><code>backend/RoomManager.js</code></td>
+            <td>Pokoje, gracze, host, lifecycle pokoju.</td>
+            <td>Tu dojdzie reconnect, tokeny, host tools.</td>
+          </tr>
+          <tr>
+            <td><code>backend/server.js</code></td>
+            <td>Socket.io, akcje klientów, rozsyłanie stanu.</td>
+            <td>Tu dojdą event log, wersje stanu, admin actions.</td>
+          </tr>
+          <tr>
+            <td><code>backend/test/GameEngine.test.js</code></td>
+            <td>Regresje silnika zasad.</td>
+            <td>Dodać testy brakujących scenariuszy z sekcji 18.4 planu.</td>
+          </tr>
+          <tr>
+            <td><code>frontend/src/components/Game.jsx</code></td>
+            <td>Widok stołu, ręka, akcje gry, modale żądań.</td>
+            <td>Tu sortowanie, Makao po dobraniu, lepsze komunikaty i legal actions.</td>
+          </tr>
+          <tr>
+            <td><code>frontend/src/components/Lobby.jsx</code></td>
+            <td>Lobby, gotowość, ustawienia pokoju.</td>
+            <td>Tu limity graczy, link zaproszenia, sugestie talii.</td>
+          </tr>
+          <tr>
+            <td><code>shared/</code> i <code>frontend/src/shared/</code></td>
+            <td>Stałe i pomocnicza logika kart.</td>
+            <td>Ryzyko rozjazdu backend/frontend. Docelowo jedna wspólna logika albo legalActions z serwera.</td>
+          </tr>
+          <tr>
+            <td><code>progress.md</code></td>
+            <td>Historia prac i notatki z testów ręcznych.</td>
+            <td>Zawiera aktualne TODO zgłoszone podczas partii testowych.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

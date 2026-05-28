@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="368" viewBox="0 0 256 368" role="img">
+<title>Joker joker-d</title>
+  <rect x="4" y="4" width="248" height="360" rx="12" fill="#fffdf7" stroke="#d8cbb6" stroke-width="4"/>
+  <rect x="13" y="13" width="230" height="342" rx="8" fill="none" stroke="rgba(15,23,42,0.08)" stroke-width="2"/>
+  <text x="37" y="50" text-anchor="middle" fill="#2c3e50" font-family="Inter,Arial,sans-serif" font-size="31" font-weight="900">JOK</text>
+  <text x="219" y="318" text-anchor="middle" fill="#2c3e50" font-family="Inter,Arial,sans-serif" font-size="31" font-weight="900" transform="rotate(180 219 318)">JOK</text>
+  <path d="M128 67 145 113l49-7-37 33 21 45-50-21-50 21 21-45-37-33 49 7z" fill="#2c3e50" opacity="0.18"/>
+  <path d="M75 166c21-40 85-40 106 0-14 36-25 67-53 67s-39-31-53-67Z" fill="#2c3e50" opacity="0.28"/>
+  <circle cx="108" cy="165" r="11" fill="#fffdf7"/>
+  <circle cx="148" cy="165" r="11" fill="#fffdf7"/>
+  <path d="M103 214c19 17 31 17 50 0" fill="none" stroke="#2c3e50" stroke-width="8" stroke-linecap="round"/>
+  <text x="128" y="300" text-anchor="middle" fill="#2c3e50" font-family="Inter,Arial,sans-serif" font-size="42" font-weight="900">JOKER</text>
+</svg>

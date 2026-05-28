@@ -1,0 +1,41 @@
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "assets:cards": "node scripts/normalize-later-card-assets.js",
+    "assets:cards:svg": "node scripts/generate-card-assets.js",
+    "assets:audio": "node scripts/generate-audio-assets.js",
+    "assets:atlas": "node scripts/generate-sprite-atlas.js",
+    "assets:native": "node scripts/export-native-assets.js",
+    "assets:all": "npm run assets:cards && npm run assets:audio && npm run assets:atlas && npm run assets:native",
+    "android:add": "cap add android",
+    "android:sync": "npm run build && cap sync android",
+    "android:open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/core": "^8.3.4",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.3.4",
+    "@eslint/js": "^10.0.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "playwright": "^1.60.0",
+    "vite": "^8.0.12"
+  }
+}

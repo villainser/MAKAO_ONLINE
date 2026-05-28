@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="368" viewBox="0 0 256 368" role="img">
+<title>Rewers karty</title>
+  <rect x="4" y="4" width="248" height="360" rx="12" fill="#1a1a2e" stroke="#f2c14e" stroke-width="4"/>
+  <rect x="20" y="20" width="216" height="328" rx="10" fill="none" stroke="#dbeafe" stroke-width="3" opacity="0.34"/>
+  <path d="M47 40 63 56 47 72 31 56Z" fill="#dbeafe" opacity="0.080"/>
+  <path d="M101 40 117 56 101 72 85 56Z" fill="#dbeafe" opacity="0.088"/>
+  <path d="M155 40 171 56 155 72 139 56Z" fill="#dbeafe" opacity="0.096"/>
+  <path d="M209 40 225 56 209 72 193 56Z" fill="#dbeafe" opacity="0.104"/>
+  <path d="M74 88 90 104 74 120 58 104Z" fill="#dbeafe" opacity="0.088"/>
+  <path d="M128 88 144 104 128 120 112 104Z" fill="#dbeafe" opacity="0.096"/>
+  <path d="M182 88 198 104 182 120 166 104Z" fill="#dbeafe" opacity="0.104"/>
+  <path d="M236 88 252 104 236 120 220 104Z" fill="#dbeafe" opacity="0.112"/>
+  <path d="M47 136 63 152 47 168 31 152Z" fill="#dbeafe" opacity="0.096"/>
+  <path d="M101 136 117 152 101 168 85 152Z" fill="#dbeafe" opacity="0.104"/>
+  <path d="M155 136 171 152 155 168 139 152Z" fill="#dbeafe" opacity="0.112"/>
+  <path d="M209 136 225 152 209 168 193 152Z" fill="#dbeafe" opacity="0.120"/>
+  <path d="M74 184 90 200 74 216 58 200Z" fill="#dbeafe" opacity="0.104"/>
+  <path d="M128 184 144 200 128 216 112 200Z" fill="#dbeafe" opacity="0.112"/>
+  <path d="M182 184 198 200 182 216 166 200Z" fill="#dbeafe" opacity="0.120"/>
+  <path d="M236 184 252 200 236 216 220 200Z" fill="#dbeafe" opacity="0.128"/>
+  <path d="M47 232 63 248 47 264 31 248Z" fill="#dbeafe" opacity="0.112"/>
+  <path d="M101 232 117 248 101 264 85 248Z" fill="#dbeafe" opacity="0.120"/>
+  <path d="M155 232 171 248 155 264 139 248Z" fill="#dbeafe" opacity="0.128"/>
+  <path d="M209 232 225 248 209 264 193 248Z" fill="#dbeafe" opacity="0.136"/>
+  <path d="M74 280 90 296 74 312 58 296Z" fill="#dbeafe" opacity="0.120"/>
+  <path d="M128 280 144 296 128 312 112 296Z" fill="#dbeafe" opacity="0.128"/>
+  <path d="M182 280 198 296 182 312 166 296Z" fill="#dbeafe" opacity="0.136"/>
+  <path d="M236 280 252 296 236 312 220 296Z" fill="#dbeafe" opacity="0.144"/>
+  <path d="M128 106 176 184 128 262 80 184Z" fill="none" stroke="#f2c14e" stroke-width="9" opacity="0.8"/>
+  <path d="M128 136 157 184 128 232 99 184Z" fill="#f2c14e" opacity="0.16"/>
+  <text x="128" y="191" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="30" font-weight="900" fill="#dbeafe" opacity="0.72">MAKAO</text>
+</svg>

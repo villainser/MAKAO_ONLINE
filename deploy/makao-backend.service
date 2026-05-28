@@ -1,0 +1,22 @@
+[Unit]
+Description=Makao Socket.IO backend
+After=network.target
+
+[Service]
+Type=simple
+User=makao
+Group=makao
+WorkingDirectory=/opt/makao/backend
+Environment=NODE_ENV=production
+Environment=PORT=3001
+ExecStart=/usr/bin/node /opt/makao/backend/server.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/makao
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+{
+  "appId": "pl.makao.zeznajomymi",
+  "appName": "Makao",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  }
+}

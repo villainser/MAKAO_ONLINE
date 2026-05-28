@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="368" viewBox="0 0 256 368" role="img">
+<title>4 Kier</title>
+  <rect x="4" y="4" width="248" height="360" rx="12" fill="#fffdf7" stroke="#d8cbb6" stroke-width="4"/>
+  <rect x="13" y="13" width="230" height="342" rx="8" fill="none" stroke="rgba(15,23,42,0.08)" stroke-width="2"/>
+  <g transform="translate(37 52) rotate(0)" fill="#e74c3c">
+    <text x="0" y="0" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="40" font-weight="900">4</text>
+    <text x="0" y="34" text-anchor="middle" font-family="Arial,sans-serif" font-size="31" font-weight="900">♥</text>
+  </g>
+  <g transform="translate(219 316) rotate(180)" fill="#e74c3c">
+    <text x="0" y="0" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="40" font-weight="900">4</text>
+    <text x="0" y="34" text-anchor="middle" font-family="Arial,sans-serif" font-size="31" font-weight="900">♥</text>
+  </g>
+  <g fill="#e74c3c" opacity="0.16"><rect x="91" y="87" width="28" height="194" rx="10"/><rect x="137" y="87" width="28" height="194" rx="10"/></g>
+  <text x="83" y="128" text-anchor="middle" dominant-baseline="central" transform="rotate(0 83 128)" fill="#e74c3c" opacity="1" font-family="Arial,sans-serif" font-size="44" font-weight="900">♥</text>
+  <text x="173" y="128" text-anchor="middle" dominant-baseline="central" transform="rotate(0 173 128)" fill="#e74c3c" opacity="1" font-family="Arial,sans-serif" font-size="44" font-weight="900">♥</text>
+  <text x="83" y="240" text-anchor="middle" dominant-baseline="central" transform="rotate(180 83 240)" fill="#e74c3c" opacity="1" font-family="Arial,sans-serif" font-size="44" font-weight="900">♥</text>
+  <text x="173" y="240" text-anchor="middle" dominant-baseline="central" transform="rotate(180 173 240)" fill="#e74c3c" opacity="1" font-family="Arial,sans-serif" font-size="44" font-weight="900">♥</text>
+</svg>

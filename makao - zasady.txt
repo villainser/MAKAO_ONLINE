@@ -1,0 +1,47 @@
+ ZASADY GRY W MAKAO
+​🎯 Cel gry
+​Celem gry jest jak najszybsze pozbycie się wszystkich kart z ręki. Gra kończy się, gdy zostaniesz bez kart.
+​🎴 Przygotowanie
+​Liczba graczy: Zazwyczaj od 2 do 5-6 osób.
+​Talia: Standardowa talia 52 kart (bez jokerów).
+​Rozdanie: Każdy gracz otrzymuje po 5 kart.
+​Stos: Resztę talii kładzie się na środku (stos dobierania). Jedną kartę z góry odkrywa się i kładzie obok (stos odkładania). Uwaga: Pierwsza odkryta karta nie może być Damą. Jeśli nią jest, odkrywamy kolejną.
+​📜 Podstawowe zasady
+​W swojej turze dokładasz kartę (lub karty), która pasuje do wierzchniej karty na stosie kolorem (pik ♠, kier ♥, trefl ♣, karo ♦) lub wartością/figurą (np. szóstka na szóstkę).
+​Wrzucanie wielu kart: Możesz wyrzucić kilka kart o tej samej wartości jednocześnie (np. trzy siódemki). Pierwsza rzucona karta musi pasować do tej na stosie, a resztę dokładasz do niej.
+​Brak karty / dobieranie: Jeśli nie masz pasującej karty (lub nie chcesz rzucić funkcyjnej), musisz dobrać jedną kartę ze stosu.
+​Jeśli dobrana karta pasuje, możesz ją od razu wyrzucić na stos (ale nie musisz, chyba że to karta niefunkcyjna, a gracie z taką domową zasadą).
+​Podział kart: Karty dzielą się na niefunkcyjne/niewaleczne (zwykłe: 5, 6, 7, 8, 9, 10, Król Trefl, Król Karo) oraz funkcyjne/waleczne (2, 3, 4, Walety, Damy, Króle Pik/Kier, Asy), które wprowadzają do gry efekty i kary.
+​⚔️ Działanie kart funkcyjnych (Karty Akcji)
+​2 (Dwójki) i 3 (Trójki) – Karty ataku
+​Zmuszają kolejnego gracza do dobrania odpowiednio 2 lub 3 kart.
+​Obrona/Kumulacja: Atakowany gracz może się obronić, rzucając inną Dwójkę lub Trójkę (pasującą kolorem lub wartością). Wtedy kary się sumują i przechodzą na kolejnego gracza (np. 2 + 3 = następny bierze 5 kart).
+​4 (Czwórki) – Czekanie
+​Zmuszają kolejnego gracza do postoju (utraty kolejki).
+​Jedna rzucona Czwórka = 1 kolejka czekania.
+​Obrona: Gracz może rzucić inną Czwórkę, aby przekazać karę dalej. Kary się sumują (np. 4 + 4 = następny czeka 2 kolejki). Będąc w trakcie czekania, gracz traci turę i nie dobiera kart.
+​Walety (Jopki) – Żądanie wartości
+​Gracz rzucający Waleta może zażądać konkretnej wartości karty niefunkcyjnej (czyli: 5, 6, 7, 8, 9, 10 lub Króli niefunkcyjnych).
+​Można również nie żądać niczego (wtedy Walet działa jak zwykła karta).
+​Żądanie utrzymuje się przez całą jedną kolejkę (aż kolejka wróci do gracza, który rzucił Waleta).
+​Kolejni gracze muszą rzucać zażądaną wartość. Jeśli jej nie mają, ciągną kartę ze stosu.
+​Obrona: Żądanie można przebić, rzucając innego Waleta i zmieniając żądaną kartę.
+​Asy – Żądanie koloru
+​Gracz rzucający Asa może zażądać konkretnego koloru (kier, pik, trefl, karo).
+​Żądanie utrzymuje się do momentu, aż ktokolwiek wrzuci zażądany kolor (nawet sam żądający).
+​Obrona: Asa można przebić rzucając innego Asa i zmieniając kolor żądania.
+​Króle Pik (♠) i Kier (♥) – Króle waleczne
+​Wymuszają dobranie aż 5 kart, ale działają kierunkowo:
+​Król Pik (♠): Działa do tyłu! Osoba grająca przed rzucającym musi dobrać 5 kart.
+​Król Kier (♥): Działa do przodu! Osoba grająca po rzucającym musi dobrać 5 kart.
+​Obrona/Odbijanie: Atak królem można odbić, rzucając drugiego walecznego króla (np. Król Kier rzucony na Króla Pik przekierowuje kumulację do przodu – gracz po nim weźmie 10 kart).
+​Króle niefunkcyjne (Trefl, Karo) to zwykłe karty, można nimi po prostu przykryć Króle funkcyjne, by uniknąć ich użycia (jeśli nie działają akurat efekty).
+​Damy – Karty specjalne (Dama na wszystko, wszystko na damę)
+​Kolor Damy nie ma znaczenia.
+​Możesz położyć Damę na niemal każdą kartę, a na Damę możesz rzucić dowolną kartę.
+​Ważne wyjątki: Damy nie można użyć jako obrony przed atakiem! Nie można rzucić Damy na aktywne: 2, 3, 4, Króle funkcyjne ani na aktywne żądania Asów czy Waletów.
+​🗣️ Zasada "MAKAO"
+​Jeśli rzucasz karty i w ręce zostaje Ci tylko 1 karta, musisz głośno powiedzieć „Makao!”.
+​Stop Makao: Jeśli zapomnisz tego zrobić, a inny gracz zauważy to i pierwszy krzyknie „Stop Makao!”, jako karę musisz dobrać 5 kart ze stosu (będziesz mieć ich łącznie 6).
+​💡 Ważne niuanse (Kończenie gry)
+​Jeśli kończysz grę (pozbywasz się ostatniej karty) zrzucając kartę ataku/funkcyjną (np. Dwójkę, Czwórkę lub Króla), jej kara nadal działa na kolejnego gracza! * Wyjątkiem są Asy i Walety – jeśli kończysz grę rzucając tę kartę (albo np. schodzisz z kilku Asów naraz), rzucona karta staje się niefunkcyjna i nie możesz wystosować żądania. Reszta graczy gra dalej normalnie.

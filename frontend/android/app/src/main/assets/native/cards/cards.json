@@ -1,0 +1,1757 @@
+{
+  "meta": {
+    "image": "cards.png",
+    "images": [
+      {
+        "image": "cards.png",
+        "size": {
+          "w": 2080,
+          "h": 3880
+        },
+        "firstRow": 0,
+        "rowCount": 5
+      },
+      {
+        "image": "cards2.png",
+        "size": {
+          "w": 2080,
+          "h": 3880
+        },
+        "firstRow": 5,
+        "rowCount": 5
+      },
+      {
+        "image": "cards3.png",
+        "size": {
+          "w": 2080,
+          "h": 3104
+        },
+        "firstRow": 10,
+        "rowCount": 4
+      }
+    ],
+    "format": "RGBA8888",
+    "size": {
+      "w": 2080,
+      "h": 3880
+    },
+    "frame": {
+      "w": 512,
+      "h": 768
+    },
+    "columns": 4,
+    "rows": 14,
+    "layout": "rank-rows_suit-columns",
+    "columnOrder": [
+      "hearts",
+      "diamonds",
+      "clubs",
+      "spades"
+    ],
+    "rowOrder": [
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10",
+      "jack",
+      "queen",
+      "king",
+      "ace",
+      "special"
+    ],
+    "padding": 4,
+    "cell": {
+      "w": 520,
+      "h": 776
+    }
+  },
+  "frames": [
+    {
+      "name": "2-hearts",
+      "filename": "2-hearts",
+      "page": "cards.png",
+      "frame": {
+        "x": 4,
+        "y": 4,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "2-diamonds",
+      "filename": "2-diamonds",
+      "page": "cards.png",
+      "frame": {
+        "x": 524,
+        "y": 4,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "2-clubs",
+      "filename": "2-clubs",
+      "page": "cards.png",
+      "frame": {
+        "x": 1044,
+        "y": 4,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "2-spades",
+      "filename": "2-spades",
+      "page": "cards.png",
+      "frame": {
+        "x": 1564,
+        "y": 4,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "3-hearts",
+      "filename": "3-hearts",
+      "page": "cards.png",
+      "frame": {
+        "x": 4,
+        "y": 780,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "3-diamonds",
+      "filename": "3-diamonds",
+      "page": "cards.png",
+      "frame": {
+        "x": 524,
+        "y": 780,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "3-clubs",
+      "filename": "3-clubs",
+      "page": "cards.png",
+      "frame": {
+        "x": 1044,
+        "y": 780,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "3-spades",
+      "filename": "3-spades",
+      "page": "cards.png",
+      "frame": {
+        "x": 1564,
+        "y": 780,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "4-hearts",
+      "filename": "4-hearts",
+      "page": "cards.png",
+      "frame": {
+        "x": 4,
+        "y": 1556,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "4-diamonds",
+      "filename": "4-diamonds",
+      "page": "cards.png",
+      "frame": {
+        "x": 524,
+        "y": 1556,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "4-clubs",
+      "filename": "4-clubs",
+      "page": "cards.png",
+      "frame": {
+        "x": 1044,
+        "y": 1556,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "4-spades",
+      "filename": "4-spades",
+      "page": "cards.png",
+      "frame": {
+        "x": 1564,
+        "y": 1556,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "5-hearts",
+      "filename": "5-hearts",
+      "page": "cards.png",
+      "frame": {
+        "x": 4,
+        "y": 2332,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "5-diamonds",
+      "filename": "5-diamonds",
+      "page": "cards.png",
+      "frame": {
+        "x": 524,
+        "y": 2332,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "5-clubs",
+      "filename": "5-clubs",
+      "page": "cards.png",
+      "frame": {
+        "x": 1044,
+        "y": 2332,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "5-spades",
+      "filename": "5-spades",
+      "page": "cards.png",
+      "frame": {
+        "x": 1564,
+        "y": 2332,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "6-hearts",
+      "filename": "6-hearts",
+      "page": "cards.png",
+      "frame": {
+        "x": 4,
+        "y": 3108,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "6-diamonds",
+      "filename": "6-diamonds",
+      "page": "cards.png",
+      "frame": {
+        "x": 524,
+        "y": 3108,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "6-clubs",
+      "filename": "6-clubs",
+      "page": "cards.png",
+      "frame": {
+        "x": 1044,
+        "y": 3108,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "6-spades",
+      "filename": "6-spades",
+      "page": "cards.png",
+      "frame": {
+        "x": 1564,
+        "y": 3108,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "7-hearts",
+      "filename": "7-hearts",
+      "page": "cards2.png",
+      "frame": {
+        "x": 4,
+        "y": 4,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "7-diamonds",
+      "filename": "7-diamonds",
+      "page": "cards2.png",
+      "frame": {
+        "x": 524,
+        "y": 4,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "7-clubs",
+      "filename": "7-clubs",
+      "page": "cards2.png",
+      "frame": {
+        "x": 1044,
+        "y": 4,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "7-spades",
+      "filename": "7-spades",
+      "page": "cards2.png",
+      "frame": {
+        "x": 1564,
+        "y": 4,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "8-hearts",
+      "filename": "8-hearts",
+      "page": "cards2.png",
+      "frame": {
+        "x": 4,
+        "y": 780,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "8-diamonds",
+      "filename": "8-diamonds",
+      "page": "cards2.png",
+      "frame": {
+        "x": 524,
+        "y": 780,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "8-clubs",
+      "filename": "8-clubs",
+      "page": "cards2.png",
+      "frame": {
+        "x": 1044,
+        "y": 780,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "8-spades",
+      "filename": "8-spades",
+      "page": "cards2.png",
+      "frame": {
+        "x": 1564,
+        "y": 780,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "9-hearts",
+      "filename": "9-hearts",
+      "page": "cards2.png",
+      "frame": {
+        "x": 4,
+        "y": 1556,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "9-diamonds",
+      "filename": "9-diamonds",
+      "page": "cards2.png",
+      "frame": {
+        "x": 524,
+        "y": 1556,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "9-clubs",
+      "filename": "9-clubs",
+      "page": "cards2.png",
+      "frame": {
+        "x": 1044,
+        "y": 1556,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "9-spades",
+      "filename": "9-spades",
+      "page": "cards2.png",
+      "frame": {
+        "x": 1564,
+        "y": 1556,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "10-hearts",
+      "filename": "10-hearts",
+      "page": "cards2.png",
+      "frame": {
+        "x": 4,
+        "y": 2332,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "10-diamonds",
+      "filename": "10-diamonds",
+      "page": "cards2.png",
+      "frame": {
+        "x": 524,
+        "y": 2332,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "10-clubs",
+      "filename": "10-clubs",
+      "page": "cards2.png",
+      "frame": {
+        "x": 1044,
+        "y": 2332,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "10-spades",
+      "filename": "10-spades",
+      "page": "cards2.png",
+      "frame": {
+        "x": 1564,
+        "y": 2332,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "jack-hearts",
+      "filename": "jack-hearts",
+      "page": "cards2.png",
+      "frame": {
+        "x": 4,
+        "y": 3108,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "jack-diamonds",
+      "filename": "jack-diamonds",
+      "page": "cards2.png",
+      "frame": {
+        "x": 524,
+        "y": 3108,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "jack-clubs",
+      "filename": "jack-clubs",
+      "page": "cards2.png",
+      "frame": {
+        "x": 1044,
+        "y": 3108,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "jack-spades",
+      "filename": "jack-spades",
+      "page": "cards2.png",
+      "frame": {
+        "x": 1564,
+        "y": 3108,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "queen-hearts",
+      "filename": "queen-hearts",
+      "page": "cards3.png",
+      "frame": {
+        "x": 4,
+        "y": 4,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "queen-diamonds",
+      "filename": "queen-diamonds",
+      "page": "cards3.png",
+      "frame": {
+        "x": 524,
+        "y": 4,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "queen-clubs",
+      "filename": "queen-clubs",
+      "page": "cards3.png",
+      "frame": {
+        "x": 1044,
+        "y": 4,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "queen-spades",
+      "filename": "queen-spades",
+      "page": "cards3.png",
+      "frame": {
+        "x": 1564,
+        "y": 4,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "king-hearts",
+      "filename": "king-hearts",
+      "page": "cards3.png",
+      "frame": {
+        "x": 4,
+        "y": 780,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "king-diamonds",
+      "filename": "king-diamonds",
+      "page": "cards3.png",
+      "frame": {
+        "x": 524,
+        "y": 780,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "king-clubs",
+      "filename": "king-clubs",
+      "page": "cards3.png",
+      "frame": {
+        "x": 1044,
+        "y": 780,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "king-spades",
+      "filename": "king-spades",
+      "page": "cards3.png",
+      "frame": {
+        "x": 1564,
+        "y": 780,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "ace-hearts",
+      "filename": "ace-hearts",
+      "page": "cards3.png",
+      "frame": {
+        "x": 4,
+        "y": 1556,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "ace-diamonds",
+      "filename": "ace-diamonds",
+      "page": "cards3.png",
+      "frame": {
+        "x": 524,
+        "y": 1556,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "ace-clubs",
+      "filename": "ace-clubs",
+      "page": "cards3.png",
+      "frame": {
+        "x": 1044,
+        "y": 1556,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "ace-spades",
+      "filename": "ace-spades",
+      "page": "cards3.png",
+      "frame": {
+        "x": 1564,
+        "y": 1556,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "joker-a",
+      "filename": "joker-a",
+      "page": "cards3.png",
+      "frame": {
+        "x": 4,
+        "y": 2332,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "joker-b",
+      "filename": "joker-b",
+      "page": "cards3.png",
+      "frame": {
+        "x": 524,
+        "y": 2332,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "joker-d",
+      "filename": "joker-d",
+      "page": "cards3.png",
+      "frame": {
+        "x": 1044,
+        "y": 2332,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    },
+    {
+      "name": "back",
+      "filename": "back",
+      "page": "cards3.png",
+      "frame": {
+        "x": 1564,
+        "y": 2332,
+        "w": 512,
+        "h": 768
+      },
+      "rotated": false,
+      "trimmed": false,
+      "sourceSize": {
+        "w": 512,
+        "h": 768
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 512,
+        "h": 768
+      }
+    }
+  ],
+  "regions": {
+    "2-hearts": {
+      "page": "cards.png",
+      "x": 4,
+      "y": 4,
+      "w": 512,
+      "h": 768
+    },
+    "2-diamonds": {
+      "page": "cards.png",
+      "x": 524,
+      "y": 4,
+      "w": 512,
+      "h": 768
+    },
+    "2-clubs": {
+      "page": "cards.png",
+      "x": 1044,
+      "y": 4,
+      "w": 512,
+      "h": 768
+    },
+    "2-spades": {
+      "page": "cards.png",
+      "x": 1564,
+      "y": 4,
+      "w": 512,
+      "h": 768
+    },
+    "3-hearts": {
+      "page": "cards.png",
+      "x": 4,
+      "y": 780,
+      "w": 512,
+      "h": 768
+    },
+    "3-diamonds": {
+      "page": "cards.png",
+      "x": 524,
+      "y": 780,
+      "w": 512,
+      "h": 768
+    },
+    "3-clubs": {
+      "page": "cards.png",
+      "x": 1044,
+      "y": 780,
+      "w": 512,
+      "h": 768
+    },
+    "3-spades": {
+      "page": "cards.png",
+      "x": 1564,
+      "y": 780,
+      "w": 512,
+      "h": 768
+    },
+    "4-hearts": {
+      "page": "cards.png",
+      "x": 4,
+      "y": 1556,
+      "w": 512,
+      "h": 768
+    },
+    "4-diamonds": {
+      "page": "cards.png",
+      "x": 524,
+      "y": 1556,
+      "w": 512,
+      "h": 768
+    },
+    "4-clubs": {
+      "page": "cards.png",
+      "x": 1044,
+      "y": 1556,
+      "w": 512,
+      "h": 768
+    },
+    "4-spades": {
+      "page": "cards.png",
+      "x": 1564,
+      "y": 1556,
+      "w": 512,
+      "h": 768
+    },
+    "5-hearts": {
+      "page": "cards.png",
+      "x": 4,
+      "y": 2332,
+      "w": 512,
+      "h": 768
+    },
+    "5-diamonds": {
+      "page": "cards.png",
+      "x": 524,
+      "y": 2332,
+      "w": 512,
+      "h": 768
+    },
+    "5-clubs": {
+      "page": "cards.png",
+      "x": 1044,
+      "y": 2332,
+      "w": 512,
+      "h": 768
+    },
+    "5-spades": {
+      "page": "cards.png",
+      "x": 1564,
+      "y": 2332,
+      "w": 512,
+      "h": 768
+    },
+    "6-hearts": {
+      "page": "cards.png",
+      "x": 4,
+      "y": 3108,
+      "w": 512,
+      "h": 768
+    },
+    "6-diamonds": {
+      "page": "cards.png",
+      "x": 524,
+      "y": 3108,
+      "w": 512,
+      "h": 768
+    },
+    "6-clubs": {
+      "page": "cards.png",
+      "x": 1044,
+      "y": 3108,
+      "w": 512,
+      "h": 768
+    },
+    "6-spades": {
+      "page": "cards.png",
+      "x": 1564,
+      "y": 3108,
+      "w": 512,
+      "h": 768
+    },
+    "7-hearts": {
+      "page": "cards2.png",
+      "x": 4,
+      "y": 4,
+      "w": 512,
+      "h": 768
+    },
+    "7-diamonds": {
+      "page": "cards2.png",
+      "x": 524,
+      "y": 4,
+      "w": 512,
+      "h": 768
+    },
+    "7-clubs": {
+      "page": "cards2.png",
+      "x": 1044,
+      "y": 4,
+      "w": 512,
+      "h": 768
+    },
+    "7-spades": {
+      "page": "cards2.png",
+      "x": 1564,
+      "y": 4,
+      "w": 512,
+      "h": 768
+    },
+    "8-hearts": {
+      "page": "cards2.png",
+      "x": 4,
+      "y": 780,
+      "w": 512,
+      "h": 768
+    },
+    "8-diamonds": {
+      "page": "cards2.png",
+      "x": 524,
+      "y": 780,
+      "w": 512,
+      "h": 768
+    },
+    "8-clubs": {
+      "page": "cards2.png",
+      "x": 1044,
+      "y": 780,
+      "w": 512,
+      "h": 768
+    },
+    "8-spades": {
+      "page": "cards2.png",
+      "x": 1564,
+      "y": 780,
+      "w": 512,
+      "h": 768
+    },
+    "9-hearts": {
+      "page": "cards2.png",
+      "x": 4,
+      "y": 1556,
+      "w": 512,
+      "h": 768
+    },
+    "9-diamonds": {
+      "page": "cards2.png",
+      "x": 524,
+      "y": 1556,
+      "w": 512,
+      "h": 768
+    },
+    "9-clubs": {
+      "page": "cards2.png",
+      "x": 1044,
+      "y": 1556,
+      "w": 512,
+      "h": 768
+    },
+    "9-spades": {
+      "page": "cards2.png",
+      "x": 1564,
+      "y": 1556,
+      "w": 512,
+      "h": 768
+    },
+    "10-hearts": {
+      "page": "cards2.png",
+      "x": 4,
+      "y": 2332,
+      "w": 512,
+      "h": 768
+    },
+    "10-diamonds": {
+      "page": "cards2.png",
+      "x": 524,
+      "y": 2332,
+      "w": 512,
+      "h": 768
+    },
+    "10-clubs": {
+      "page": "cards2.png",
+      "x": 1044,
+      "y": 2332,
+      "w": 512,
+      "h": 768
+    },
+    "10-spades": {
+      "page": "cards2.png",
+      "x": 1564,
+      "y": 2332,
+      "w": 512,
+      "h": 768
+    },
+    "jack-hearts": {
+      "page": "cards2.png",
+      "x": 4,
+      "y": 3108,
+      "w": 512,
+      "h": 768
+    },
+    "jack-diamonds": {
+      "page": "cards2.png",
+      "x": 524,
+      "y": 3108,
+      "w": 512,
+      "h": 768
+    },
+    "jack-clubs": {
+      "page": "cards2.png",
+      "x": 1044,
+      "y": 3108,
+      "w": 512,
+      "h": 768
+    },
+    "jack-spades": {
+      "page": "cards2.png",
+      "x": 1564,
+      "y": 3108,
+      "w": 512,
+      "h": 768
+    },
+    "queen-hearts": {
+      "page": "cards3.png",
+      "x": 4,
+      "y": 4,
+      "w": 512,
+      "h": 768
+    },
+    "queen-diamonds": {
+      "page": "cards3.png",
+      "x": 524,
+      "y": 4,
+      "w": 512,
+      "h": 768
+    },
+    "queen-clubs": {
+      "page": "cards3.png",
+      "x": 1044,
+      "y": 4,
+      "w": 512,
+      "h": 768
+    },
+    "queen-spades": {
+      "page": "cards3.png",
+      "x": 1564,
+      "y": 4,
+      "w": 512,
+      "h": 768
+    },
+    "king-hearts": {
+      "page": "cards3.png",
+      "x": 4,
+      "y": 780,
+      "w": 512,
+      "h": 768
+    },
+    "king-diamonds": {
+      "page": "cards3.png",
+      "x": 524,
+      "y": 780,
+      "w": 512,
+      "h": 768
+    },
+    "king-clubs": {
+      "page": "cards3.png",
+      "x": 1044,
+      "y": 780,
+      "w": 512,
+      "h": 768
+    },
+    "king-spades": {
+      "page": "cards3.png",
+      "x": 1564,
+      "y": 780,
+      "w": 512,
+      "h": 768
+    },
+    "ace-hearts": {
+      "page": "cards3.png",
+      "x": 4,
+      "y": 1556,
+      "w": 512,
+      "h": 768
+    },
+    "ace-diamonds": {
+      "page": "cards3.png",
+      "x": 524,
+      "y": 1556,
+      "w": 512,
+      "h": 768
+    },
+    "ace-clubs": {
+      "page": "cards3.png",
+      "x": 1044,
+      "y": 1556,
+      "w": 512,
+      "h": 768
+    },
+    "ace-spades": {
+      "page": "cards3.png",
+      "x": 1564,
+      "y": 1556,
+      "w": 512,
+      "h": 768
+    },
+    "joker-a": {
+      "page": "cards3.png",
+      "x": 4,
+      "y": 2332,
+      "w": 512,
+      "h": 768
+    },
+    "joker-b": {
+      "page": "cards3.png",
+      "x": 524,
+      "y": 2332,
+      "w": 512,
+      "h": 768
+    },
+    "joker-d": {
+      "page": "cards3.png",
+      "x": 1044,
+      "y": 2332,
+      "w": 512,
+      "h": 768
+    },
+    "back": {
+      "page": "cards3.png",
+      "x": 1564,
+      "y": 2332,
+      "w": 512,
+      "h": 768
+    }
+  }
+}

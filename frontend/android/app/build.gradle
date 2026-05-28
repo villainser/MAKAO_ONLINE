@@ -1,0 +1,109 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace = "pl.makao.zeznajomymi"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "pl.makao.zeznajomymi"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    sourceSets {
+        main {
+            jniLibs.srcDirs += ["$buildDir/generated/gdxNatives"]
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+configurations {
+    gdxNativesArm64
+    gdxNativesArmv7
+    gdxNativesX86
+    gdxNativesX86_64
+    gdxFreetypeNativesArm64
+    gdxFreetypeNativesArmv7
+    gdxFreetypeNativesX86
+    gdxFreetypeNativesX86_64
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation "com.badlogicgames.gdx:gdx:$gdxVersion"
+    implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
+    implementation "com.badlogicgames.gdx:gdx-freetype:$gdxVersion"
+    implementation("io.socket:socket.io-client:2.1.2") {
+        exclude group: "org.json", module: "json"
+    }
+    gdxNativesArm64 "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
+    gdxNativesArmv7 "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
+    gdxNativesX86 "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86"
+    gdxNativesX86_64 "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86_64"
+    gdxFreetypeNativesArm64 "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-arm64-v8a"
+    gdxFreetypeNativesArmv7 "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-armeabi-v7a"
+    gdxFreetypeNativesX86 "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-x86"
+    gdxFreetypeNativesX86_64 "com.badlogicgames.gdx:gdx-freetype-platform:$gdxVersion:natives-x86_64"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+tasks.register('extractGdxNatives') {
+    def outputRoot = file("$buildDir/generated/gdxNatives")
+    outputs.dir(outputRoot)
+    doLast {
+        [
+            [configuration: configurations.gdxNativesArm64, abi: 'arm64-v8a', library: 'libgdx.so'],
+            [configuration: configurations.gdxNativesArmv7, abi: 'armeabi-v7a', library: 'libgdx.so'],
+            [configuration: configurations.gdxNativesX86, abi: 'x86', library: 'libgdx.so'],
+            [configuration: configurations.gdxNativesX86_64, abi: 'x86_64', library: 'libgdx.so'],
+            [configuration: configurations.gdxFreetypeNativesArm64, abi: 'arm64-v8a', library: 'libgdx-freetype.so'],
+            [configuration: configurations.gdxFreetypeNativesArmv7, abi: 'armeabi-v7a', library: 'libgdx-freetype.so'],
+            [configuration: configurations.gdxFreetypeNativesX86, abi: 'x86', library: 'libgdx-freetype.so'],
+            [configuration: configurations.gdxFreetypeNativesX86_64, abi: 'x86_64', library: 'libgdx-freetype.so']
+        ].each { nativeTarget ->
+            copy {
+                from zipTree(nativeTarget.configuration.singleFile)
+                include nativeTarget.library
+                into file("$outputRoot/${nativeTarget.abi}")
+            }
+        }
+    }
+}
+
+preBuild.dependsOn extractGdxNatives
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}
