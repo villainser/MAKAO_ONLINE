@@ -22,12 +22,45 @@ frontend/android/app/src/main/res/xml/config.xml
 *.ap_
 
 # Local/reference asset dumps
-makao/
+/makao/
 later_asset/
 later_asset.zip
 source-assets/
 slay-the-spire-v2.6.0-full/
 slay-the-spire-v2.6.0-full.apk
+/apk_inspirion/
+/screen_z_bledami/
+/.playwright-cli/
+/tmp/
+
+# Deployment secrets and local configuration
+.env
+.env.*
+*.env
+!.env.example
+!*.env.example
+/certynowyserweroracle/
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Persisted room state contains private session data
+/backend/data/
+/data/
+
+# Local development journals, drafts and workstation automation
+/progress.md
+/frontend/progress.md
+/codex_resume_plan.md
+/hybrid_overlay_plan.md
+/koncept_makao_ze_znajomymi_wersja_scalona_doprecyzowana.md
+/makao - zasady.txt
+/raport_realizacji_planu_makao.html
+/scripts/night_codex_loop.sh
+/scripts/run_night_codex_awake.sh
 
 # Logs and local editor/system files
 *.log

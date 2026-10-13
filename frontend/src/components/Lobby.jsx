@@ -1,5 +1,7 @@
 import { EVENTS, FIRST_PLAYER_MODES, QUEEN_VARIANTS, ROOM_LIMITS, TURN_TIME_LIMIT_OPTIONS } from '../shared/constants';
 import { useMemo, useState } from 'react';
+import { createInviteText, createInviteUrl } from '../inviteUtils.js';
+import { shareText } from '../shareUtils.js';
 
 const QUEEN_VARIANT_DETAILS = {
   [QUEEN_VARIANTS.DEFENSIVE_NON_FUNCTIONAL]: {
@@ -14,7 +16,7 @@ const QUEEN_VARIANT_DETAILS = {
   }
 };
 
-function Lobby({ socket, room, socketId, onLeaveRoom }) {
+function Lobby({ socket, room, socketId, serverUrl, onLeaveRoom }) {
   const [pendingHostAction, setPendingHostAction] = useState(null);
   const [roomNameDraftState, setRoomNameDraftState] = useState({
     source: room.name || '',
@@ -75,12 +77,15 @@ function Lobby({ socket, room, socketId, onLeaveRoom }) {
     ? 'Czekam'
     : (isStartingGame ? 'Rozdajemy...' : 'Start');
   const nextFirstPlayer = room.players.find(p => p.id === room.nextGameFirstPlayerId);
-  const turnLimitValue = TURN_TIME_LIMIT_OPTIONS.includes(room.settings.turnTimeLimitSeconds)
-    ? String(room.settings.turnTimeLimitSeconds)
-    : 'custom';
+  const turnLimitValue = room.settings.turnTimeLimitSeconds <= 0
+    ? '0'
+    : (TURN_TIME_LIMIT_OPTIONS.includes(room.settings.turnTimeLimitSeconds)
+      ? String(room.settings.turnTimeLimitSeconds)
+      : 'custom');
   const selectedTurnLimitValue = turnLimitDraft.mode || turnLimitValue;
   const queenVariantInfo = QUEEN_VARIANT_DETAILS[room.settings.queenVariant]
     || QUEEN_VARIANT_DETAILS[QUEEN_VARIANTS.DEFENSIVE_NON_FUNCTIONAL];
+  const allowMultipleCards = room.settings.allowMultipleCards !== false;
   const firstPlayerSelection = room.settings.firstPlayerMode === FIRST_PLAYER_MODES.RANDOM_EACH_GAME
     ? FIRST_PLAYER_MODES.RANDOM_EACH_GAME
     : (room.nextGameFirstPlayerId || room.settings.firstPlayerId || FIRST_PLAYER_MODES.RANDOM_EACH_GAME);
@@ -96,10 +101,21 @@ function Lobby({ socket, room, socketId, onLeaveRoom }) {
     hasEnoughPlayers ? 'lobby-table-readying' : 'lobby-table-waiting'
   ].join(' ');
   const inviteUrl = useMemo(() => {
-    const url = new URL(window.location.href);
-    url.searchParams.set('room', room.id);
-    return url.toString();
-  }, [room.id]);
+    return createInviteUrl({
+      appUrl: window.location.href,
+      serverUrl,
+      roomId: room.id,
+      roomName: room.name
+    });
+  }, [room.id, room.name, serverUrl]);
+  const inviteText = useMemo(() => {
+    return createInviteText({
+      appUrl: window.location.href,
+      serverUrl,
+      roomId: room.id,
+      roomName: room.name
+    });
+  }, [room.id, room.name, serverUrl]);
 
   const toggleReady = () => {
     socket.emit(EVENTS.TOGGLE_READY);
@@ -142,6 +158,7 @@ function Lobby({ socket, room, socketId, onLeaveRoom }) {
   };
 
   const formatTurnLimit = (seconds) => {
+    if (!seconds || seconds <= 0) return 'Bez limitu';
     if (seconds < 60) return `${seconds} s`;
     const minutes = Math.floor(seconds / 60);
     const rest = seconds % 60;
@@ -160,18 +177,16 @@ function Lobby({ socket, room, socketId, onLeaveRoom }) {
   };
 
   const shareInvite = async () => {
-    if (!navigator.share) {
-      copyText(inviteUrl, 'Link skopiowany');
-      return;
-    }
     try {
-      await navigator.share({
-        title: room.name || 'Makao',
-        text: `Dołącz do pokoju Makao ${room.id}`,
-        url: inviteUrl
+      const result = await shareText({
+        title: 'Makao - zaproszenie do gry',
+        text: inviteText
       });
+      setCopyStatus(result.method === 'clipboard' ? 'Zaproszenie skopiowane' : 'Udostępnianie otwarte');
+      window.setTimeout(() => setCopyStatus(''), 1800);
     } catch {
-      // Anulowanie systemowego arkusza udostępniania nie wymaga komunikatu.
+      setCopyStatus('Nie udało się udostępnić');
+      window.setTimeout(() => setCopyStatus(''), 1800);
     }
   };
 
@@ -441,6 +456,14 @@ function Lobby({ socket, room, socketId, onLeaveRoom }) {
                   <strong>{formatTurnLimit(room.settings.turnTimeLimitSeconds)}</strong>
                 </div>
                 <div className="settings-segments" role="group" aria-label="Limit czasu tury">
+                  <button
+                    type="button"
+                    className={selectedTurnLimitValue === '0' ? 'settings-segment settings-segment-active' : 'settings-segment'}
+                    onClick={() => chooseTurnLimit('0')}
+                    disabled={!isHost}
+                  >
+                    Bez limitu
+                  </button>
                   {TURN_TIME_LIMIT_OPTIONS.map(seconds => {
                     const value = String(seconds);
                     return (
@@ -497,6 +520,23 @@ function Lobby({ socket, room, socketId, onLeaveRoom }) {
                   aria-pressed={room.settings.useJokers}
                 >
                   {room.settings.useJokers ? 'W talii' : 'Wyłączone'}
+                </button>
+              </section>
+
+              <section className="settings-card">
+                <div className="settings-card-head">
+                  <span>Wiele kart w ruchu</span>
+                  <strong>{allowMultipleCards ? 'Tak' : 'Nie'}</strong>
+                </div>
+                <button
+                  type="button"
+                  className={allowMultipleCards ? 'settings-toggle-chip settings-toggle-chip-on' : 'settings-toggle-chip'}
+                  onClick={() => updateSettings('allowMultipleCards', !allowMultipleCards)}
+                  disabled={!isHost}
+                  aria-pressed={allowMultipleCards}
+                  aria-label="Pozwól zagrywać kilka kart tej samej wartości w jednym ruchu"
+                >
+                  {allowMultipleCards ? 'Dozwolone' : 'Jedna karta'}
                 </button>
               </section>
 

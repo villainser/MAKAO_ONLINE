@@ -19,7 +19,8 @@ Usage: scripts/android_phone_native_flow_smoke.sh [options]
 Runs a focused real-phone native flow diagnostic:
   - starts local backend with MAKAO_ENABLE_TEST_HOOKS=1,
   - joins the Android native client to the local room,
-  - seeds phone_penalty_accept and verifies deck pull draws 2 cards,
+  - seeds phone_penalty_accept and verifies two distinct deck pulls draw one penalty card each,
+    or preserves the explicit play-or-accept choice when the first card can counter,
   - seeds phone_plain_play_ready and verifies screenshot-derived card drag records play_cards and changes topCard.
 
 Options:
@@ -108,7 +109,7 @@ fi
 HOST_IP="${HOST_IP:-127.0.0.1}"
 LOCAL_SERVER_URL="http://127.0.0.1:$PORT"
 ANDROID_SERVER_URL="http://$HOST_IP:$PORT"
-APK="$PROJECT_DIR/frontend/android/app/build/outputs/apk/debug/app-debug.apk"
+APK="$("$PROJECT_DIR/scripts/android_apk_path.sh" debug)"
 SUMMARY_FILE="$OUT_DIR/summary.txt"
 
 {

@@ -1,9 +1,37 @@
 import { useEffect, useRef, useState } from 'react';
-import { EVENTS, EFFECT_TYPES, JACK_REQUEST_RANKS, QUEEN_VARIANTS, RANKS, SUITS } from '../shared/constants';
-import { compareCards, getBattleValue, getEffectiveCard, isCardLegal } from '../shared/utils';
+import {
+  EVENTS,
+  EFFECT_TYPES,
+  JACK_REQUEST_MODES,
+  JACK_REQUEST_RANKS_BASIC,
+  JACK_REQUEST_RANKS_WITH_NON_BATTLE_KINGS,
+  QUEEN_VARIANTS,
+  RANKS,
+  SUITS
+} from '../shared/constants';
+import { compareCards, getBattleValue, getEffectiveCard, isBattleCard, isCardLegal } from '../shared/utils';
 import { getCardImagePath, getCardImageStyle } from '../shared/cardAssets';
 import audioManager from '../audio/AudioManager.js';
 import theme from '../../theme.config.js';
+import { getMakaoMoveUiState, shouldResumePendingMakaoPlay } from '../makaoUiRules.js';
+import { useReliableGameActions } from '../useReliableGameActions.js';
+import {
+  canDrawFromPile,
+  canPassAfterDraw,
+  canStageAnotherCard,
+  getJokerRankCandidates,
+  isMultipleCardPlayEnabled
+} from '../gameUiRules.js';
+import {
+  getCardMotionTiming,
+  getPendingMoveHint,
+  getSensoryChannels,
+  TABLE_RETURN_COPY
+} from '../gameFeelRules.js';
+import { addNativeBackButtonListener, setNativeReactGameActive } from '../nativeBridge.js';
+import nativeTableLandscape from '../../android/app/src/main/assets/native/table/vertical_table.png';
+import nativeTablePortrait from '../../android/app/src/main/assets/native/table/background_stolu.png';
+import './GameTable.css';
 
 const HAND_SORT_STORAGE_KEY = 'makaoHandSortMode';
 const HAND_PLAYABLE_FILTER_STORAGE_KEY = 'makaoHandPlayableFilter';
@@ -14,7 +42,7 @@ const HAND_SORT_MODES = [
   { id: 'type', label: 'Typ', hint: 'Kary, ⏸, specjalne, zwykłe' },
   { id: 'playable', label: 'Możliwe', hint: 'Karty możliwe teraz idą na początek' },
   { id: 'duplicates', label: 'Duplikaty', hint: 'Identyczne karty z wielu talii jako stos' },
-  { id: 'draw', label: 'Dobranie', hint: 'Kolejność ręki z serwera' }
+  { id: 'draw', label: 'Dobranie', hint: 'Pierwotna kolejność kart' }
 ];
 
 function getStoredHandSortMode() {
@@ -46,7 +74,7 @@ function compareCardsHighFirst(a, b) {
   return compareCards(b, a);
 }
 
-function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
+function Game({ socket, room, gameState, socketId, onLeaveRoom, onRefreshSession }) {
   const [selectedCards, setSelectedCards] = useState([]);
   const [handSortMode, setHandSortModeState] = useState(getStoredHandSortMode);
   const [showOnlyPlayable, setShowOnlyPlayable] = useState(getStoredPlayableFilter);
@@ -58,6 +86,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showGameMenu, setShowGameMenu] = useState(false);
+  const [refreshingSession, setRefreshingSession] = useState(false);
   const [draggedCardId, setDraggedCardId] = useState(null);
   const [pointerDrag, setPointerDrag] = useState(null);
   const [cardMotions, setCardMotions] = useState([]);
@@ -76,8 +105,10 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
   const handScrollRef = useRef(null);
   const discardDropRef = useRef(null);
   const pointerDragRef = useRef(null);
+  const pendingAutoMakaoPlayRef = useRef(null);
   const textStateRef = useRef(null);
   const motionIdRef = useRef(0);
+  const feedbackTimerIdsRef = useRef(new Set());
   const pendingLocalDrawCountRef = useRef(0);
   const previousHandIdsRef = useRef(new Set(gameState.myHand.map(card => card.cardInstanceId)));
   const previousIsMyTurnRef = useRef(false);
@@ -89,9 +120,26 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
 
   const isGameOver = Boolean(gameState.gameOver);
   const gamePaused = Boolean(gameState.paused);
+  const myPlayerId = gameState.myPlayerId || socketId;
   const currentPlayerId = gameState.turnOrder[gameState.currentPlayerIndex];
-  const isMyTurn = !isGameOver && !gamePaused && currentPlayerId === socketId;
-  const isHost = room.hostId === socketId;
+  const isMyTurn = !isGameOver && !gamePaused && currentPlayerId === myPlayerId;
+  const isHost = room.hostId === myPlayerId;
+  const allowMultipleCards = isMultipleCardPlayEnabled({
+    allowMultipleCards: gameState.settings?.allowMultipleCards ?? room.settings?.allowMultipleCards
+  });
+  const {
+    submitReliableAction,
+    pendingAction,
+    hasPendingAction
+  } = useReliableGameActions({
+    socket,
+    roomId: room.id,
+    playerId: myPlayerId,
+    stateVersion: gameState.stateVersion
+  });
+  const estimatedServerNow = gameState.serverNow
+    ? gameState.serverNow + Math.max(0, now - (gameState.receivedAt || now))
+    : now;
 
   useEffect(() => {
     window.render_game_to_text = () => JSON.stringify(textStateRef.current || {
@@ -115,8 +163,18 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
   }, []);
 
   useEffect(() => {
+    const feedbackTimerIds = feedbackTimerIdsRef.current;
     return () => {
       window.clearTimeout(sortPressTimerRef.current);
+      feedbackTimerIds.forEach(timerId => window.clearTimeout(timerId));
+      feedbackTimerIds.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    setNativeReactGameActive(true).catch(() => {});
+    return () => {
+      setNativeReactGameActive(false).catch(() => {});
     };
   }, []);
 
@@ -143,10 +201,18 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     return nodes[0] || null;
   };
 
-  const playUiFeedback = (kind = 'tap', options = {}) => {
+  const getCurrentSensoryChannels = () => getSensoryChannels({
+    reducedMotion: shouldReduceMotion(),
+    hapticsEnabled: shouldUseHaptics()
+  });
+
+  const vibrateUi = (kind = 'tap') => {
     const patterns = {
       play: [10, 18, 12],
       draw: [8],
+      intent: [4],
+      landing: [12],
+      drawLanding: [9],
       remote: [4],
       makao: [8, 28, 8],
       win: [16, 30, 16],
@@ -154,9 +220,26 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
       tap: [6]
     };
 
-    if (shouldUseHaptics() && !shouldReduceMotion()) {
+    if (getCurrentSensoryChannels().haptics) {
       navigator.vibrate?.(patterns[kind] || patterns.tap);
     }
+  };
+
+  const scheduleUiFeedback = (callback, delay = 0) => {
+    if (delay <= 0) {
+      callback();
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      feedbackTimerIdsRef.current.delete(timerId);
+      callback();
+    }, delay);
+    feedbackTimerIdsRef.current.add(timerId);
+  };
+
+  const playUiFeedback = (kind = 'tap', options = {}) => {
+    vibrateUi(kind);
 
     const sound = {
       play: 'card_throw',
@@ -171,6 +254,10 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     audioManager.playSound(sound, options.audio || {});
   };
 
+  const playMoveIntentFeedback = () => {
+    vibrateUi('intent');
+  };
+
   const isFunctionalCard = (card) => {
     const effectiveCard = getEffectiveCard(card);
     if (!effectiveCard?.rank) return false;
@@ -178,23 +265,39 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     return effectiveCard.rank === 'king' && ['hearts', 'spades'].includes(effectiveCard.suit);
   };
 
-  const playCardThrowFeedback = (cards = []) => {
-    playUiFeedback('play');
+  const playAcceptedCardFeedback = (cards = [], { local = false } = {}) => {
+    const timing = getCardMotionTiming('play', 0, theme.animations);
+    const landingDelay = getCurrentSensoryChannels().cardMotion ? timing.landingDelay : 0;
+
+    audioManager.playSound('card_throw', { volume: local ? 0.78 : 0.54 });
     audioManager.playSound('card_land', {
-      delay: Math.max(0.05, theme.animations.throwDuration * 0.68 / 1000),
-      volume: 0.88
+      delay: landingDelay / 1000,
+      volume: local ? 0.9 : 0.66
     });
+    if (local) scheduleUiFeedback(() => vibrateUi('landing'), landingDelay);
 
     if (cards.some(isFunctionalCard)) {
       audioManager.playSound('card_function', {
-        delay: Math.max(0.08, theme.animations.throwDuration * 0.45 / 1000),
-        volume: 0.92
+        delay: (landingDelay + 90) / 1000,
+        volume: local ? 0.92 : 0.68
       });
     }
   };
 
+  const playAcceptedDrawFeedback = ({ local = false } = {}) => {
+    const timing = getCardMotionTiming('draw', 0, theme.animations);
+    const landingDelay = getCurrentSensoryChannels().cardMotion ? timing.landingDelay : 0;
+
+    audioManager.playSound('card_draw', { volume: local ? 0.7 : 0.5 });
+    audioManager.playSound('card_land', {
+      delay: landingDelay / 1000,
+      volume: local ? 0.62 : 0.42
+    });
+    if (local) scheduleUiFeedback(() => vibrateUi('drawLanding'), landingDelay);
+  };
+
   const queueCardMotion = (card, sourceElement, targetElement, kind = 'play', index = 0, options = {}) => {
-    if (shouldReduceMotion()) return;
+    if (!getCurrentSensoryChannels().cardMotion) return;
 
     const sourceRect = sourceElement?.getBoundingClientRect();
     const targetRect = targetElement?.getBoundingClientRect();
@@ -212,8 +315,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     const midY = kind === 'draw'
       ? Math.min(fromY, toY) - Math.min(arcHeight, Math.abs(toY - fromY) * 0.22 + 18)
       : Math.min(fromY, toY) - Math.min(arcHeight * 1.45, Math.abs(toY - fromY) * 0.32 + 30);
-    const duration = kind === 'draw' ? theme.animations.drawDuration : theme.animations.throwDuration;
-    const delay = index * (kind === 'draw' ? 62 : 72);
+    const { duration, delay } = getCardMotionTiming(kind, index, theme.animations);
     const rotate = kind === 'draw'
       ? ['-2deg', '7deg', '1deg']
       : ['-5deg', '10deg', '-2deg'];
@@ -284,6 +386,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
         { width: 54, height: 81 }
       );
     }
+    playAcceptedDrawFeedback({ local: true });
   };
 
   const animateRemotePlay = (event) => {
@@ -303,7 +406,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
         { width: 54, height: 81 }
       );
     });
-    if (playedCards.length > 0) playCardThrowFeedback(playedCards);
+    if (playedCards.length > 0) playAcceptedCardFeedback(playedCards);
   };
 
   const animateRemoteDraw = (event) => {
@@ -322,7 +425,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
         { width: 42, height: 63 }
       );
     }
-    audioManager.playSound('card_draw', { volume: 0.55 });
+    playAcceptedDrawFeedback();
   };
 
   useEffect(() => {
@@ -342,7 +445,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
       return;
     }
 
-    if (!latestEvent.playerId || latestEvent.playerId === socketId) return;
+    if (!latestEvent.playerId || latestEvent.playerId === myPlayerId) return;
 
     if (latestEvent.type === 'play_cards') {
       animateRemotePlay(latestEvent);
@@ -377,7 +480,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
   useEffect(() => {
     if (gameState.gameOver && !gameOverSoundPlayedRef.current) {
       gameOverSoundPlayedRef.current = true;
-      if (gameState.winnerId === socketId) {
+      if (gameState.winnerId === myPlayerId) {
         playUiFeedback('win');
       }
     }
@@ -385,7 +488,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     if (!gameState.gameOver) {
       gameOverSoundPlayedRef.current = false;
     }
-  }, [gameState.gameOver, gameState.winnerId, socketId]);
+  }, [gameState.gameOver, gameState.winnerId, myPlayerId]); // eslint-disable-line react-hooks/exhaustive-deps -- feedback reads the current user audio and haptic settings.
 
   const setHandSortMode = (mode) => {
     setHandSortModeState(mode);
@@ -429,11 +532,19 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
   };
 
   const toggleCardSelection = (cardId) => {
-    setSelectedCards(prev => 
-      prev.includes(cardId) 
-        ? prev.filter(id => id !== cardId) 
-        : [...prev, cardId]
-    );
+    setSelectedCards(prev => {
+      const alreadySelected = prev.includes(cardId);
+      if (!canStageAnotherCard({
+        settings: { allowMultipleCards },
+        selectedCount: prev.length,
+        alreadySelected
+      })) {
+        return prev;
+      }
+      return alreadySelected
+        ? prev.filter(id => id !== cardId)
+        : [...prev, cardId];
+    });
   };
 
   const startCardPress = (card, inspectable) => {
@@ -522,9 +633,11 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
 
   const getAllowedJokerRanks = (declarations = {}, jokerId = null) => {
     const forcedRank = getForcedJokerRank(pendingPlay, declarations);
-    if (forcedRank) return [forcedRank];
-    return RANKS
-      .filter(rank => rank !== 'joker')
+    return getJokerRankCandidates({
+      ranks: RANKS,
+      activeEffectType: gameState.activeEffect?.type,
+      forcedRank
+    })
       .filter(rank => getAllowedJokerSuits(rank, declarations, jokerId).length > 0);
   };
 
@@ -532,6 +645,46 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     if (!payload || payload.expectedStateVersion) return payload;
     const expectedStateVersion = gameState?.stateVersion || 0;
     return expectedStateVersion > 0 ? { ...payload, expectedStateVersion } : payload;
+  };
+
+  const getSelectedPlayCardsByIds = (cardIds) => {
+    const cards = cardIds
+      .map(id => gameState.myHand.find(card => card.cardInstanceId === id))
+      .filter(Boolean);
+    return cards.length === cardIds.length ? cards : [];
+  };
+
+  const getMakaoRequirementForCardIds = (cardIds) => {
+    const cards = getSelectedPlayCardsByIds(cardIds);
+    if (cards.length === 0) {
+      return { validSelection: false, playsLastCards: false, makaoReady: false, needsMakao: false };
+    }
+
+    const remainingCards = gameState.myHand.length - cards.length;
+    const playsLastCards = gameState.myHand.length > 1 && remainingCards === 0;
+    const makaoState = gameState.makao?.[myPlayerId];
+    const makaoReady = makaoState?.declared === true || makaoState?.armed === true;
+    return {
+      validSelection: true,
+      playsLastCards,
+      makaoReady,
+      needsMakao: playsLastCards && !makaoReady
+    };
+  };
+
+  const playAfterMakaoIsArmed = (cardIds) => {
+    setSelectedCards(cardIds);
+    const actionId = submitReliableAction(
+      EVENTS.DECLARE_MAKAO,
+      withExpectedStateVersion({}),
+      { onAccepted: () => playUiFeedback('makao') }
+    );
+    if (!actionId) return;
+    pendingAutoMakaoPlayRef.current = {
+      cardIds: [...cardIds],
+      requestedAt: Date.now()
+    };
+    playMoveIntentFeedback();
   };
 
   const continuePlayWithPayload = (payload) => {
@@ -543,41 +696,36 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     if (firstRank === 'ace') {
       setPendingPlay(playPayload);
       setShowRequestModal({ type: 'suit' });
-      return;
+      return true;
     }
 
     if (firstRank === 'jack') {
       setPendingPlay(playPayload);
       setShowRequestModal({ type: 'rank' });
-      return;
+      return true;
     }
 
-    animatePlayedCards(playPayload);
-    playCardThrowFeedback(declaredCards);
-    socket.emit(EVENTS.PLAY_CARDS, playPayload);
+    const actionId = submitReliableAction(EVENTS.PLAY_CARDS, playPayload, {
+      onAccepted: () => {
+        animatePlayedCards(playPayload);
+        playAcceptedCardFeedback(declaredCards, { local: true });
+      }
+    });
+    if (!actionId) return false;
+    playMoveIntentFeedback();
     setSelectedCards([]);
     closeExpandedHandGroup();
     setPendingPlay(null);
-  };
-
-  const canPlayCardIdsNow = (cardIds) => {
-    const cards = cardIds
-      .map(id => gameState.myHand.find(card => card.cardInstanceId === id))
-      .filter(Boolean);
-    if (cards.length !== cardIds.length || cards.length === 0) return false;
-
-    const remainingCards = gameState.myHand.length - cards.length;
-    const playsLastCards = gameState.myHand.length > 1 && remainingCards === 0;
-    const makaoState = gameState.makao?.[socketId];
-    const makaoReady = makaoState?.declared === true || makaoState?.armed === true;
-    return !playsLastCards || makaoReady;
+    return true;
   };
 
   const startPlayWithCardIds = (cardIds) => {
     if (cardIds.length === 0) return;
-    if (!canPlayCardIdsNow(cardIds)) {
-      setSelectedCards(cardIds);
-      playUiFeedback('error');
+    if (!allowMultipleCards && cardIds.length > 1) return;
+    const makaoRequirement = getMakaoRequirementForCardIds(cardIds);
+    if (!makaoRequirement.validSelection) return;
+    if (makaoRequirement.needsMakao) {
+      playAfterMakaoIsArmed(cardIds);
       return;
     }
 
@@ -601,6 +749,33 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     continuePlayWithPayload(basePayload);
   };
 
+  useEffect(() => {
+    const pendingAutoMakaoPlay = pendingAutoMakaoPlayRef.current;
+    if (!pendingAutoMakaoPlay) return;
+    if (!isMyTurn) {
+      pendingAutoMakaoPlayRef.current = null;
+      return;
+    }
+
+    const makaoRequirement = getMakaoRequirementForCardIds(pendingAutoMakaoPlay.cardIds);
+    if (!makaoRequirement.validSelection || !makaoRequirement.playsLastCards) {
+      pendingAutoMakaoPlayRef.current = null;
+      return;
+    }
+
+    if (!shouldResumePendingMakaoPlay({
+      hasPendingAction,
+      isMyTurn,
+      validSelection: makaoRequirement.validSelection,
+      playsLastCards: makaoRequirement.playsLastCards,
+      makaoReady: makaoRequirement.makaoReady
+    })) return;
+
+    const cardIds = [...pendingAutoMakaoPlay.cardIds];
+    pendingAutoMakaoPlayRef.current = null;
+    window.setTimeout(() => startPlayWithCardIds(cardIds), 0);
+  });
+
   const playSelectedCards = () => {
     startPlayWithCardIds(selectedCards);
   };
@@ -611,9 +786,14 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     if (showRequestModal.type === 'rank') payload.rankRequest = value;
     const declaredCards = getDeclaredPlayCards(payload);
 
-    animatePlayedCards(payload);
-    playCardThrowFeedback(declaredCards);
-    socket.emit(EVENTS.PLAY_CARDS, payload);
+    const actionId = submitReliableAction(EVENTS.PLAY_CARDS, payload, {
+      onAccepted: () => {
+        animatePlayedCards(payload);
+        playAcceptedCardFeedback(declaredCards, { local: true });
+      }
+    });
+    if (!actionId) return;
+    playMoveIntentFeedback();
     setSelectedCards([]);
     closeExpandedHandGroup();
     setShowRequestModal(null);
@@ -651,11 +831,11 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
       return;
     }
 
-    setShowJokerModal(null);
-    continuePlayWithPayload({
+    const continued = continuePlayWithPayload({
       ...pendingPlay,
       jokerDeclarations: declarations
     });
+    if (continued) setShowJokerModal(null);
   };
 
   const cancelJokerDeclaration = () => {
@@ -664,36 +844,49 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
   };
 
   const drawCard = () => {
+    const actionId = submitReliableAction(EVENTS.DRAW_CARD, {}, {
+      onRejected: () => { pendingLocalDrawCountRef.current = 0; }
+    });
+    if (!actionId) return;
     pendingLocalDrawCountRef.current = Math.max(pendingLocalDrawCountRef.current, 1);
-    playUiFeedback('draw');
-    socket.emit(EVENTS.DRAW_CARD);
-  };
-
-  const acceptPenalty = () => {
-    const penaltyCount = gameState.activeEffect?.amount || 1;
-    pendingLocalDrawCountRef.current = Math.max(pendingLocalDrawCountRef.current, penaltyCount);
-    playUiFeedback('draw');
-    socket.emit(EVENTS.ACCEPT_PENALTY);
+    playMoveIntentFeedback();
   };
 
   const acceptSkip = () => {
-    audioManager.playSound('card_function');
-    socket.emit(EVENTS.ACCEPT_SKIP);
+    const actionId = submitReliableAction(EVENTS.ACCEPT_SKIP, {}, {
+      onAccepted: () => audioManager.playSound('card_function')
+    });
+    if (!actionId) return;
+    playMoveIntentFeedback();
   };
 
   const declareMakao = () => {
-    playUiFeedback('makao');
-    socket.emit(EVENTS.DECLARE_MAKAO, withExpectedStateVersion({}));
+    const actionId = submitReliableAction(
+      EVENTS.DECLARE_MAKAO,
+      withExpectedStateVersion({}),
+      { onAccepted: () => playUiFeedback('makao') }
+    );
+    if (!actionId) return;
+    playMoveIntentFeedback();
   };
 
   const catchMakao = (targetPlayerId) => {
-    playUiFeedback('makao');
-    socket.emit(EVENTS.CATCH_MAKAO, withExpectedStateVersion({ targetPlayerId }));
+    const actionId = submitReliableAction(
+      EVENTS.CATCH_MAKAO,
+      withExpectedStateVersion({ targetPlayerId }),
+      { onAccepted: () => playUiFeedback('makao') }
+    );
+    if (!actionId) return;
+    playMoveIntentFeedback();
   };
 
   const passTurn = () => {
-    audioManager.playSound('card_land', { volume: 0.55 });
-    socket.emit(EVENTS.PASS_TURN);
+    if (gameState.activeEffect?.type === EFFECT_TYPES.DRAW_PENALTY) return;
+    const actionId = submitReliableAction(EVENTS.PASS_TURN, {}, {
+      onAccepted: () => audioManager.playSound('card_land', { volume: 0.55 })
+    });
+    if (!actionId) return;
+    playMoveIntentFeedback();
     setSelectedCards([]);
     closeExpandedHandGroup();
   };
@@ -792,19 +985,19 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
   };
 
   const pauseGame = () => {
-    socket.emit(EVENTS.PAUSE_GAME);
+    submitReliableAction(EVENTS.PAUSE_GAME);
   };
 
   const resumeGame = () => {
     if (
       gameState.pauseReason === 'manual' &&
-      gameState.pausedPlayerId !== socketId &&
+      gameState.pausedPlayerId !== myPlayerId &&
       isHost
     ) {
       setShowHostResumeConfirm({ step: 1 });
       return;
     }
-    socket.emit(EVENTS.RESUME_GAME, {});
+    submitReliableAction(EVENTS.RESUME_GAME);
   };
 
   const confirmHostResumeOverride = () => {
@@ -812,7 +1005,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
       setShowHostResumeConfirm({ step: 2 });
       return;
     }
-    socket.emit(EVENTS.RESUME_GAME, {
+    submitReliableAction(EVENTS.RESUME_GAME, {
       hostOverrideConfirmed: true,
       hostOverrideRiskAccepted: true
     });
@@ -845,6 +1038,19 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     socket.emit(EVENTS.RETURN_TO_LOBBY);
   };
 
+  const refreshSession = async () => {
+    if (refreshingSession || !onRefreshSession) return;
+    setRefreshingSession(true);
+    const refreshed = await onRefreshSession();
+    setRefreshingSession(false);
+    if (!refreshed) return;
+    setSelectedCards([]);
+    setPendingPlay(null);
+    setShowRequestModal(null);
+    setShowJokerModal(null);
+    setShowGameMenu(false);
+  };
+
   const requestLeaveRoom = () => {
     if (isGameOver) {
       onLeaveRoom();
@@ -852,6 +1058,69 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     }
     setShowLeaveConfirm(true);
   };
+
+  useEffect(() => addNativeBackButtonListener(() => {
+    if (showLeaveConfirm) {
+      setShowLeaveConfirm(false);
+      return;
+    }
+    if (showHostActionConfirm) {
+      setShowHostActionConfirm(null);
+      return;
+    }
+    if (showHostResumeConfirm) {
+      setShowHostResumeConfirm(null);
+      return;
+    }
+    if (showJokerModal) {
+      setShowJokerModal(null);
+      setPendingPlay(null);
+      return;
+    }
+    if (showRequestModal) {
+      setShowRequestModal(null);
+      setPendingPlay(null);
+      return;
+    }
+    if (showHistoryModal) {
+      setShowHistoryModal(false);
+      return;
+    }
+    if (showSortModal) {
+      setShowSortModal(false);
+      return;
+    }
+    if (inspectedCard) {
+      setInspectedCard(null);
+      return;
+    }
+    if (showGameMenu) {
+      setShowGameMenu(false);
+      return;
+    }
+    if (expandedHandRank) {
+      setExpandedHandRank(null);
+      return;
+    }
+    if (isGameOver) {
+      onLeaveRoom();
+      return;
+    }
+    setShowLeaveConfirm(true);
+  }), [
+    expandedHandRank,
+    inspectedCard,
+    isGameOver,
+    onLeaveRoom,
+    showGameMenu,
+    showHistoryModal,
+    showHostActionConfirm,
+    showHostResumeConfirm,
+    showJokerModal,
+    showLeaveConfirm,
+    showRequestModal,
+    showSortModal
+  ]);
 
   const getPlayerName = (playerId) => {
     const gamePlayer = gameState.players?.find(p => p.id === playerId);
@@ -919,7 +1188,9 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
 
   const formatTurnEvent = (event) => {
     if (event.type === 'draw_pile_refilled') {
-      return `Stos dobierania przetasowany. Nowa karta stołu: ${formatCard(event.topCard)}`;
+      return event.topCard
+        ? `Stos dobierania przetasowany. Karta na stole bez zmian: ${formatCard(event.topCard)}`
+        : 'Stos dobierania przetasowany.';
     }
     const name = getPlayerName(event.playerId);
     const nextName = event.nextPlayerId ? getPlayerName(event.nextPlayerId) : getPlayerName(currentPlayerId);
@@ -927,11 +1198,11 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     if (event.type === 'skip_used') return `${name} ⏸. Zostaje ${formatPauseCount(event.remaining)}. Teraz gra ${nextName}`;
     if (event.type === 'skip_finished') return `${name} ⏸. Zużyte. Teraz gra ${nextName}`;
     if (event.type === 'auto_draw_playable') {
-      if (event.playerId === socketId) return `Dobrałeś ${formatCard(event.drawnCard)}. Decydujesz: zagrać albo spasować`;
+      if (event.playerId === myPlayerId) return `Dobrałeś ${formatCard(event.drawnCard)}. Decydujesz: zagrać albo spasować`;
       return `${name} dobrał kartę. ${name} decyduje: zagrać albo spasować`;
     }
     if (event.type === 'auto_draw_pass') {
-      if (event.playerId === socketId) return `Dobrałeś ${formatCard(event.drawnCard)} bez odpowiedzi. Teraz gra ${nextName}`;
+      if (event.playerId === myPlayerId) return `Dobrałeś ${formatCard(event.drawnCard)} bez odpowiedzi. Teraz gra ${nextName}`;
       return `${name} dobrał kartę bez odpowiedzi. Teraz gra ${nextName}`;
     }
     if (event.type === 'penalty_accepted') return `${name} dobrał karę +${event.amount}. Teraz gra ${nextName}`;
@@ -990,10 +1261,13 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     return `${version} ${actor}: ${labels[event.type] || event.type}`;
   };
 
-  const myMakaoState = gameState.makao?.[socketId];
+  const myMakaoState = gameState.makao?.[myPlayerId];
   const isDrawPenaltyActive = gameState.activeEffect?.type === EFFECT_TYPES.DRAW_PENALTY;
-  const isSkipEffectActive = gameState.activeEffect?.type === EFFECT_TYPES.SKIP_TURN;
   const drawnCard = gameState.myHand.find(c => c.cardInstanceId === gameState.drawnCardInstanceId);
+  const jackRequestRanks = gameState.settings?.jackRequestMode === JACK_REQUEST_MODES.VALUES_5_TO_10
+    ? JACK_REQUEST_RANKS_BASIC
+    : JACK_REQUEST_RANKS_WITH_NON_BATTLE_KINGS;
+  const jackRequestHint = jackRequestRanks.includes('non_battle_king') ? '5-10, K♣/♦' : '5-10';
   const activeSortMode = HAND_SORT_MODES.find(mode => mode.id === handSortMode) || HAND_SORT_MODES[0];
   const getCardTypePriority = (card) => {
     const effectiveCard = getEffectiveCard(card);
@@ -1007,11 +1281,48 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     const effectiveCard = getEffectiveCard(card);
     return `${effectiveCard.rank}_${effectiveCard.suit || 'joker'}`;
   };
+  const getEffectTargetPlayerId = (direction = 'next') => {
+    const order = gameState.turnOrder || [];
+    if (!order.length) return null;
+    const currentIndex = Number.isInteger(gameState.currentPlayerIndex)
+      ? gameState.currentPlayerIndex
+      : order.indexOf(currentPlayerId);
+    if (currentIndex < 0) return null;
+    const step = direction === 'previous' ? -1 : 1;
+    const turnDirection = gameState.direction || 1;
+    const nextIndex = (currentIndex + (turnDirection * step) + order.length) % order.length;
+    return order[nextIndex] || null;
+  };
+  const getBattleDirection = (card) => {
+    const effectiveCard = getEffectiveCard(card);
+    if (effectiveCard.rank === 'king' && effectiveCard.suit === 'spades' && (gameState.turnOrder?.length || 0) >= 3) {
+      return 'previous';
+    }
+    return 'next';
+  };
   const duplicateCounts = gameState.myHand.reduce((counts, card) => {
     const key = getCardSortKey(card);
     counts.set(key, (counts.get(key) || 0) + 1);
     return counts;
   }, new Map());
+  const canJoinActiveBattleKingSelection = (card) => {
+    if (gameState.activeEffect?.type !== EFFECT_TYPES.DRAW_PENALTY) return false;
+
+    const effectiveCard = getEffectiveCard(card);
+    if (effectiveCard.rank !== 'king' || isBattleCard(card)) return false;
+
+    const selectedNonJokers = selectedCards
+      .map(id => gameState.myHand.find(handCard => handCard.cardInstanceId === id))
+      .filter(selectedCard => selectedCard && selectedCard.rank !== 'joker');
+    if (selectedNonJokers.length === 0) return false;
+
+    const selectedKingsOnly = selectedNonJokers.every(selectedCard => getEffectiveCard(selectedCard).rank === 'king');
+    const selectedLegalBattleKing = selectedNonJokers.some(selectedCard => (
+      isBattleCard(selectedCard) && isCardLegal(selectedCard, gameState)
+    ));
+
+    return selectedKingsOnly && selectedLegalBattleKing;
+  };
   const canCardJoinCurrentMove = (card) => {
     if (!isMyTurn) return false;
     if (gameState.hasDrawnCardThisTurn) {
@@ -1019,6 +1330,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
       if (card.cardInstanceId === gameState.drawnCardInstanceId) return true;
       return card.rank === 'joker' || drawnCard.rank === 'joker' || card.rank === drawnCard.rank;
     }
+    if (canJoinActiveBattleKingSelection(card)) return true;
     return isCardLegal(card, gameState);
   };
   const compareByMode = (a, b) => {
@@ -1091,7 +1403,10 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
       && remainingCards === 0;
 
     if (playsLastCards) {
-      return `${selectedCount}. Przed zagraniem ostatnich kart kliknij Makao.`;
+      const makaoReadyForPreview = myMakaoState?.declared === true || myMakaoState?.armed === true;
+      return makaoReadyForPreview
+        ? `${selectedCount}. Ostatni ruch gotowy.`
+        : `${selectedCount}. Kliknij Makao, potem zagraj ostatnie karty.`;
     }
 
     if (jokerCount > 0) {
@@ -1107,6 +1422,12 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
 
     const battleValue = selectedCardObjects.reduce((sum, card) => sum + getBattleValue(card), 0);
     if (battleValue > 0) {
+      const battleDriver = [...selectedCardObjects].reverse().find(card => getBattleValue(card) > 0);
+      const battleTargetPlayerId = getEffectTargetPlayerId(getBattleDirection(battleDriver));
+      const targetPauseCount = gameState.skipTurns?.[battleTargetPlayerId] || 0;
+      if (gameState.activeEffect?.type !== EFFECT_TYPES.DRAW_PENALTY && targetPauseCount > 0) {
+        return `${selectedCount}. Kara nie naliczy się: ${getPlayerName(battleTargetPlayerId)} ma ${formatPauseCount(targetPauseCount)}.`;
+      }
       const existingPenalty = gameState.activeEffect?.type === EFFECT_TYPES.DRAW_PENALTY
         ? gameState.activeEffect.amount
         : 0;
@@ -1125,7 +1446,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     }
 
     if (firstRank === 'jack') {
-      return `${selectedCount}. Po zagraniu wybierzesz żądaną wartość 5-10 albo bez żądania.`;
+      return `${selectedCount}. Po zagraniu wybierzesz żądaną wartość ${jackRequestHint} albo bez żądania.`;
     }
 
     if (firstRank === 'queen') {
@@ -1190,31 +1511,53 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     };
   }, [gameState.myHand.length, groupedHand.length]);
 
-  const selectedMoveRemainingCards = gameState.myHand.length - selectedCardObjects.length;
-  const selectedMovePlaysLastCards = selectedCardObjects.length > 0
-    && selectedCardObjects.length === selectedCards.length
-    && gameState.myHand.length > 1
-    && selectedMoveRemainingCards === 0;
-  const selectedMoveNeedsMakao = selectedCardObjects.length > 0
-    && selectedCardObjects.length === selectedCards.length
-    && (selectedMoveRemainingCards === 1 || (gameState.myHand.length > 1 && selectedMoveRemainingCards === 0));
-  const myMakaoReady = myMakaoState?.declared === true || myMakaoState?.armed === true;
-  const selectedMoveBlockedByMakao = selectedMovePlaysLastCards && !myMakaoReady;
-  const canDeclareMissingMakao = myMakaoState?.declared === false
-    && (!myMakaoState.canBeCaughtAt || now < myMakaoState.canBeCaughtAt);
-  const canArmMakaoForSelectedMove = isMyTurn && selectedMoveNeedsMakao && !myMakaoReady;
-  const canDeclareMakaoNow = canDeclareMissingMakao || canArmMakaoForSelectedMove;
-  const shouldShowMakaoButton = (gameState.myHand.length === 1 && myMakaoState?.declared === false)
-    || canArmMakaoForSelectedMove;
-  const canPlaySelectedOnTable = !isGameOver && !gamePaused && isMyTurn && selectedCards.length > 0 && !selectedMoveBlockedByMakao;
-  const canUseDrawPile = !isGameOver && isMyTurn && !gameState.hasDrawnCardThisTurn && !isSkipEffectActive;
-  const canResumeManualPause = gamePaused && gameState.pauseReason === 'manual' && (gameState.pausedPlayerId === socketId || isHost);
+  const {
+    myMakaoReady,
+    canDeclareMakaoNow,
+    shouldShowMakaoButton
+  } = getMakaoMoveUiState({
+    handSize: gameState.myHand.length,
+    selectedCount: selectedCardObjects.length,
+    selectionComplete: selectedCardObjects.length === selectedCards.length,
+    isMyTurn,
+    makaoState: myMakaoState,
+    estimatedServerNow
+  });
+  const shouldShowCatchMakaoButton = (playerId) => {
+    const makaoState = gameState.makao?.[playerId];
+    return playerId !== myPlayerId
+      && makaoState?.declared === false
+      && makaoState?.armed !== true
+      && (gameState.handCounts?.[playerId] || 0) === 1;
+  };
+  const canCatchMakaoNow = (playerId) => {
+    if (!shouldShowCatchMakaoButton(playerId)) return false;
+    const makaoState = gameState.makao?.[playerId];
+    if (makaoState.canBeCaughtAt && estimatedServerNow < makaoState.canBeCaughtAt) return false;
+    if (makaoState.catchUntil && estimatedServerNow > makaoState.catchUntil) return false;
+    return true;
+  };
+  const canAttemptSelectedOnTable = !isGameOver
+    && !gamePaused
+    && isMyTurn
+    && !hasPendingAction
+    && selectedCards.length > 0
+    && (allowMultipleCards || selectedCards.length === 1);
+  const canPlaySelectedOnTable = canAttemptSelectedOnTable;
+  const canUseDrawPile = canDrawFromPile({
+    gameOver: isGameOver,
+    isMyTurn,
+    hasPendingAction,
+    hasDrawnCardThisTurn: gameState.hasDrawnCardThisTurn,
+    activeEffectType: gameState.activeEffect?.type
+  });
+  const canPassDrawnCard = canPassAfterDraw({
+    hasDrawnCardThisTurn: gameState.hasDrawnCardThisTurn,
+    activeEffectType: gameState.activeEffect?.type
+  });
+  const canResumeManualPause = !hasPendingAction && gamePaused && gameState.pauseReason === 'manual' && (gameState.pausedPlayerId === myPlayerId || isHost);
   const handleDrawPileClick = () => {
     if (!canUseDrawPile) return;
-    if (isDrawPenaltyActive) {
-      acceptPenalty();
-      return;
-    }
     drawCard();
   };
   const handleDiscardPileClick = () => {
@@ -1237,7 +1580,8 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
   };
 
   const isSelectableCardLegal = (card) => {
-    if (!isMyTurn) return false;
+    if (!isMyTurn || hasPendingAction) return false;
+    if (!allowMultipleCards && selectedCards.length > 0 && !selectedCards.includes(card.cardInstanceId)) return false;
 
     if (gameState.hasDrawnCardThisTurn) {
       const isDrawnCard = card.cardInstanceId === gameState.drawnCardInstanceId;
@@ -1253,7 +1597,13 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
 
     if (selectedCards.length > 0) {
       if (card.rank === 'joker') return true;
-      if (gameState.activeEffect?.type === EFFECT_TYPES.DRAW_PENALTY && !isCardLegal(card, gameState)) return false;
+      if (
+        gameState.activeEffect?.type === EFFECT_TYPES.DRAW_PENALTY &&
+        !isCardLegal(card, gameState) &&
+        !canJoinActiveBattleKingSelection(card)
+      ) {
+        return false;
+      }
       const firstSelectedNonJoker = selectedCards
         .map(id => gameState.myHand.find(c => c.cardInstanceId === id))
         .find(selectedCard => selectedCard?.rank !== 'joker');
@@ -1265,6 +1615,9 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
 
   const getMoveHintText = () => {
     if (isGameOver) return null;
+    if (pendingAction) {
+      return getPendingMoveHint({ pendingAction: true, connected: socket.connected });
+    }
     if (gamePaused) {
       return gameState.pauseReason === 'manual'
         ? `⏸: ${getPlayerName(gameState.pausedPlayerId)} zaraz wraca`
@@ -1274,6 +1627,9 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
       return null;
     }
     if (gameState.hasDrawnCardThisTurn) {
+      if (gameState.activeEffect?.type === EFFECT_TYPES.DRAW_PENALTY) {
+        return 'Zagraj pierwszą dobraną kartę albo dobierz następną kartę kary.';
+      }
       if (drawnCard && isCardLegal(drawnCard, gameState)) {
         return 'Dobrana karta jest aktywna. Rzuć ją albo spasuj.';
       }
@@ -1418,7 +1774,6 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
         }}
         onDragEnd={handleCardDragEnd}
         onDoubleClick={options.onDoubleClick && interactive ? onCardDoubleClick : undefined}
-        // eslint-disable-next-line react-hooks/refs -- click handler reads refs only after a real card tap.
         onClick={(interactive || inspectable) ? () => handleCardClick(interactive ? onClick : undefined) : undefined}
         disabled={!interactive && !inspectable}
         className={classes}
@@ -1471,22 +1826,25 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     if (gameState.hasDrawnCardThisTurn) {
       const drawnInGroup = group.cards.find(card => card.cardInstanceId === gameState.drawnCardInstanceId);
       if (!drawnInGroup) return [];
-      return [
+      const cards = [
         drawnInGroup,
         ...group.cards.filter(card => card.cardInstanceId !== drawnInGroup.cardInstanceId && canCardJoinCurrentMove(card))
       ];
+      return allowMultipleCards ? cards : cards.slice(0, 1);
     }
 
     if (gameState.activeEffect?.type === EFFECT_TYPES.DRAW_PENALTY) {
-      return group.cards.every(card => isCardLegal(card, gameState)) ? [...group.cards] : [];
+      const cards = group.cards.every(card => isCardLegal(card, gameState)) ? [...group.cards] : [];
+      return allowMultipleCards ? cards : cards.slice(0, 1);
     }
 
     const firstLegalCard = group.cards.find(card => isCardLegal(card, gameState));
     if (!firstLegalCard) return [];
-    return [
+    const cards = [
       firstLegalCard,
       ...group.cards.filter(card => card.cardInstanceId !== firstLegalCard.cardInstanceId)
     ];
+    return allowMultipleCards ? cards : cards.slice(0, 1);
   };
 
   const selectAllGroupCards = (group) => {
@@ -1583,7 +1941,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     .map(formatTurnEvent)
     .filter(Boolean);
   const displayPlayers = gameState.players?.length ? gameState.players : room.players;
-  const otherPlayers = displayPlayers.filter(p => p.id !== socketId);
+  const otherPlayers = displayPlayers.filter(p => p.id !== myPlayerId);
   const currentPlayer = displayPlayers.find(p => p.id === currentPlayerId);
   const activeEffectTargetPlayer = displayPlayers.find(p => p.id === gameState.activeEffect?.targetPlayerId);
   const canHostSkipOffline = isHost &&
@@ -1602,9 +1960,16 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
   const currentStatus = isGameOver
     ? (gameState.endReason === 'host_admin'
       ? 'Partia zakończona'
-      : (gameState.winnerId === socketId ? 'Wygrałeś' : `Wygrał ${getPlayerName(gameState.winnerId)}`))
+      : (gameState.winnerId === myPlayerId ? 'Wygrałeś' : `Wygrał ${getPlayerName(gameState.winnerId)}`))
     : (gamePaused ? 'Gra wstrzymana' : (isMyTurn ? 'Twoja tura' : `Gra ${getPlayerName(currentPlayerId)}`));
   const lastTimedOutPlayerId = gameState.timedOutPlayers?.at(-1)?.playerId;
+  const latestPlayerLeftEvent = [...(gameState.moveHistory || [])]
+    .reverse()
+    .find(event => event.type === 'player_left');
+  const endedBecausePlayerLeft = gameState.endReason === 'not_enough_players' && Boolean(latestPlayerLeftEvent);
+  const leftPlayerName = latestPlayerLeftEvent?.details?.playerName
+    || getPlayerName(latestPlayerLeftEvent?.playerId)
+    || 'Drugi gracz';
   const firstPlayerId = gameState.moveHistory?.[0]?.details?.firstPlayerId || room.lastFirstPlayerId;
   const gameNumber = gameState.moveHistory?.[0]?.details?.gameNumber || room.gameNumber;
   const currentJokerId = showJokerModal?.jokerIds?.[showJokerModal.index] || null;
@@ -1632,7 +1997,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
   }[handSortMode] || activeSortMode.label;
   const recentHistoryEvents = [...(gameState.moveHistory || [])].slice(-7).reverse();
   const drawActionLabel = isDrawPenaltyActive
-    ? `Przyjmij +${gameState.activeEffect?.amount || 1}`
+    ? `Dobierz 1 · kara +${gameState.activeEffect?.amount || 1}`
     : 'Dobierz';
   // eslint-disable-next-line react-hooks/refs -- renderCard only reads pointer refs from event handlers, not while building elements.
   const handItems = groupedHand.map(renderHandItem);
@@ -1668,16 +2033,16 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
           )}
           <span className="hand-count-pill">{handCount}</span>
         </div>
-        {gameState.makao?.[p.id]?.declared === false && (
+        {shouldShowCatchMakaoButton(p.id) && (
           <button
             className="btn btn-danger catch-button"
             onClick={() => catchMakao(p.id)}
-            disabled={now < gameState.makao[p.id].canBeCaughtAt}
+            disabled={!canCatchMakaoNow(p.id) || hasPendingAction}
           >
             Złap Makao
           </button>
         )}
-        {isHost && !isGameOver && p.id !== socketId && (
+        {isHost && !isGameOver && p.id !== myPlayerId && (
           <div className="host-chip-actions">
             <button
               className="btn btn-secondary"
@@ -1713,6 +2078,12 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     roomId: room.id,
     status: currentStatus,
     isMyTurn,
+    pendingAction: pendingAction ? {
+      id: pendingAction.actionId,
+      type: pendingAction.actionType,
+      retryCount: pendingAction.retryCount || 0
+    } : null,
+    refreshingSession,
     paused: gamePaused,
     gameOver: isGameOver,
     currentPlayer: currentPlayerId ? {
@@ -1726,6 +2097,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
     selectedCards: selectedCardObjects.map(formatCard),
     canPlaySelectedOnTable,
     canUseDrawPile,
+    allowMultipleCards,
     hand: sortedHand.map(card => ({
       id: card.cardInstanceId,
       label: formatCard(card),
@@ -1748,7 +2120,13 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
   });
 
   return (
-    <main className={`game-screen ${isMyTurn ? 'is-my-turn' : ''}`}>
+    <main
+      className={`game-screen game-table-web ${isMyTurn ? 'is-my-turn' : ''}`}
+      style={{
+        '--game-table-landscape': `url("${nativeTableLandscape}")`,
+        '--game-table-portrait': `url("${nativeTablePortrait}")`
+      }}
+    >
       <div className="landscape-gate">
         <div className="phone-rotate-icon">
           <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1763,10 +2141,13 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
       </div>
       <header className="game-topbar">
         <div className="turn-summary">
-          <p className="eyebrow">Pokój {room.id}</p>
-          <h1>{currentStatus}</h1>
+          <p className="eyebrow game-room-plaque">
+            <strong>Pokój {room.id}</strong>
+            <span>{socket.connected ? 'Online' : 'Offline'}</span>
+          </p>
+          <h1 className="game-turn-plaque">{currentStatus}</h1>
           <div className="status-line">
-            {(gameState.skipTurns?.[socketId] || 0) > 0 && <span className="status-chip-skip">{formatPauseCount(gameState.skipTurns[socketId])}</span>}
+            {(gameState.skipTurns?.[myPlayerId] || 0) > 0 && <span className="status-chip-skip">{formatPauseCount(gameState.skipTurns[myPlayerId])}</span>}
             {myMakaoReady && <span className="status-chip-makao">Makao</span>}
             <div className="status-stats-rail" aria-label="Stan partii">
               {gameNumber > 0 && (
@@ -1805,13 +2186,22 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
           aria-label="Menu gry"
           aria-expanded={showGameMenu}
         >
-          <span aria-hidden="true">...</span>
+          <span aria-hidden="true">Menu</span>
         </button>
       </header>
 
       {showGameMenu && (
         <div className="game-menu-backdrop" onClick={() => setShowGameMenu(false)}>
           <section className="game-menu-sheet" aria-label="Menu gry" onClick={(event) => event.stopPropagation()}>
+            <button
+              className="btn btn-session-refresh"
+              type="button"
+              onClick={refreshSession}
+              disabled={refreshingSession}
+              aria-busy={refreshingSession}
+            >
+              {refreshingSession ? TABLE_RETURN_COPY.pending : TABLE_RETURN_COPY.action}
+            </button>
             <button
               className="btn btn-secondary"
               type="button"
@@ -1822,7 +2212,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
             >
               Historia
             </button>
-            {!isGameOver && !gamePaused && (
+            {!isGameOver && !gamePaused && !hasPendingAction && (
               <button
                 className="btn btn-secondary"
                 type="button"
@@ -1914,7 +2304,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
                 requestLeaveRoom();
               }}
             >
-              Wyjdź
+              Opuść pokój
             </button>
           </section>
         </div>
@@ -1966,23 +2356,23 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
                 className="btn makao-action"
                 type="button"
                 onClick={declareMakao}
-                disabled={!canDeclareMakaoNow}
+                disabled={!canDeclareMakaoNow || hasPendingAction}
               >
                 Makao
               </button>
             )}
             {!isGameOver && !gamePaused && isMyTurn && gameState.activeEffect?.type === EFFECT_TYPES.SKIP_TURN && !gameState.hasDrawnCardThisTurn && (
-              <button className="btn btn-warning" type="button" onClick={acceptSkip}>
+              <button className="btn btn-warning" type="button" onClick={acceptSkip} disabled={hasPendingAction}>
                 Pauzuję
               </button>
             )}
-            {!isGameOver && !gamePaused && isMyTurn && gameState.hasDrawnCardThisTurn && (
-              <button className="btn btn-warning" type="button" onClick={passTurn}>
+            {!isGameOver && !gamePaused && isMyTurn && canPassDrawnCard && (
+              <button className="btn btn-warning" type="button" onClick={passTurn} disabled={hasPendingAction}>
                 Pas
               </button>
             )}
             {!isGameOver && !gamePaused && (
-              <button className="btn btn-secondary" type="button" onClick={pauseGame}>
+              <button className="btn btn-secondary" type="button" onClick={pauseGame} disabled={hasPendingAction}>
                 Pauza
               </button>
             )}
@@ -2028,22 +2418,37 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
       <section className="table-zone">
         {isGameOver && (
           <div className="table-banner banner-success">
-            {gameState.endReason === 'host_admin'
-              ? 'Partia zakończona przez hosta'
-              : gameState.endReason === 'timeout'
-                ? `${getPlayerName(lastTimedOutPlayerId)} przekroczył limit czasu. Wygrał ${getPlayerName(gameState.winnerId)}`
-              : `Wygrał ${getPlayerName(gameState.winnerId)}`}
+            {endedBecausePlayerLeft
+              ? `${leftPlayerName} opuścił pokój. Partia została zakończona.`
+              : (gameState.endReason === 'host_admin'
+                ? 'Partia zakończona przez hosta'
+                : gameState.endReason === 'timeout'
+                  ? `${getPlayerName(lastTimedOutPlayerId)} przekroczył limit czasu. Wygrał ${getPlayerName(gameState.winnerId)}`
+                  : `Wygrał ${getPlayerName(gameState.winnerId)}`)}
           </div>
         )}
 
         {isGameOver && (
           <div className="game-over-actions">
-            {isHost ? (
-              <button className="btn btn-primary" type="button" onClick={returnToLobby}>
-                Kolejna partia
-              </button>
+            {endedBecausePlayerLeft ? (
+              <>
+                {isHost && (
+                  <button className="btn btn-primary" type="button" onClick={returnToLobby}>
+                    Czekaj w pokoju
+                  </button>
+                )}
+                <button className="btn btn-secondary" type="button" onClick={requestLeaveRoom}>
+                  Opuść pokój
+                </button>
+              </>
             ) : (
-              <span>Host przygotuje następną partię</span>
+              isHost ? (
+                <button className="btn btn-primary" type="button" onClick={returnToLobby}>
+                  Kolejna partia
+                </button>
+              ) : (
+                <span>Host przygotuje następną partię</span>
+              )
             )}
           </div>
         )}
@@ -2097,9 +2502,9 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
               false,
               // eslint-disable-next-line react-hooks/refs -- renderCard stores this handler; it reads refs only later on a player tap.
               drawPileClickHandler,
-              { size: 'table', interactiveHidden: canUseDrawPile, label: isDrawPenaltyActive ? 'Przyjmij karę' : 'Dobierz kartę' }
+              { size: 'table', interactiveHidden: canUseDrawPile, label: isDrawPenaltyActive ? 'Dobierz jedną kartę kary' : 'Dobierz kartę' }
             )}
-            <span>{isDrawPenaltyActive ? `Kara +${gameState.activeEffect.amount}` : `Talia ${gameState.drawPileCount ?? 0}`}</span>
+            <span className="pile-label">{isDrawPenaltyActive ? `Kara +${gameState.activeEffect.amount}` : `Talia ${gameState.drawPileCount ?? 0}`}</span>
           </div>
 
           <div
@@ -2120,7 +2525,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
               canPlaySelectedOnTable ? handleDiscardPileClick : undefined,
               { size: 'table' }
             )}
-            <span>Stół</span>
+            <span className="pile-label">Stół</span>
           </div>
         </div>
       </section>
@@ -2147,7 +2552,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
               type="button"
               className="btn makao-action"
               onClick={declareMakao}
-              disabled={!canDeclareMakaoNow}
+              disabled={!canDeclareMakaoNow || hasPendingAction}
               aria-pressed={false}
             >
               {canDeclareMakaoNow ? 'Makao' : 'Za późno'}
@@ -2155,13 +2560,13 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
           )}
 
           {!isGameOver && !gamePaused && isMyTurn && gameState.activeEffect?.type === EFFECT_TYPES.SKIP_TURN && !gameState.hasDrawnCardThisTurn && (
-            <button className="btn btn-warning" onClick={acceptSkip}>
+            <button className="btn btn-warning" onClick={acceptSkip} disabled={hasPendingAction}>
               Pauzuję
             </button>
           )}
 
-          {!isGameOver && !gamePaused && isMyTurn && gameState.hasDrawnCardThisTurn && (
-            <button className="btn btn-warning" onClick={passTurn}>
+          {!isGameOver && !gamePaused && isMyTurn && canPassDrawnCard && (
+            <button className="btn btn-warning" onClick={passTurn} disabled={hasPendingAction}>
               Pas
             </button>
           )}
@@ -2336,6 +2741,11 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
                 Ten joker musi mieć wartość {getRankLabel(jokerForcedRank)}, żeby pasował do wybranej paczki.
               </p>
             )}
+            {gameState.activeEffect?.type === EFFECT_TYPES.SKIP_TURN && (
+              <p className="modal-hint">
+                Przy aktywnej pauzie Joker może zostać zadeklarowany tylko jako 4; Anuluj, aby przyjąć pauzę.
+              </p>
+            )}
             <div className="joker-rank-grid" aria-label="Wartość jokera">
               {RANKS.filter(rank => rank !== 'joker').map(rank => (
                 <button
@@ -2386,7 +2796,7 @@ function Game({ socket, room, gameState, socketId, onLeaveRoom }) {
 
             {showRequestModal.type === 'rank' && (
               <div className="choice-grid rank-grid">
-                {JACK_REQUEST_RANKS.map(r => (
+                {jackRequestRanks.map(r => (
                   <button key={r} className="btn" onClick={() => confirmPlayWithRequest(r)}>{getRankLabel(r)}</button>
                 ))}
               </div>

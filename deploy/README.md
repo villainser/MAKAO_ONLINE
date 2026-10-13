@@ -1,90 +1,141 @@
-# Makao VM Deploy
+# Wdrożenie Makao
 
-Target VM: `8.231.197.182` (`villainswebdev`, Debian 12).
+Makao działa za Nginx: pliki aplikacji webowej są serwowane statycznie, a żądania
+Socket.IO trafiają do backendu Node.js. Instalator obsługuje systemy z `apt-get`
+(Debian/Ubuntu) i `dnf` (AlmaLinux/RHEL).
 
-## Public URL Requirements
+W przykładach `game.example` i `203.0.113.10` oznaczają domenę oraz publiczny
+adres docelowego serwera. Zastąp je własnymi wartościami. `makao-server` to
+przykładowy alias w konfiguracji klienta SSH. Klucze SSH przechowuj poza projektem.
 
-For public testing we should use a domain and HTTPS.
-
-Required DNS:
-
-```text
-A    your-domain.example    8.231.197.182
-```
-
-Required Google Cloud firewall ingress:
-
-```text
-tcp:80
-tcp:443
-```
-
-Let's Encrypt can issue the certificate after the DNS record points to the VM and port 80 is reachable from the internet.
-
-## Runtime Shape
+## Układ usługi
 
 ```text
 Nginx :80/:443
-  /              -> /var/www/makao static frontend
-  /socket.io/    -> 127.0.0.1:3001 backend WebSocket/HTTP polling
+  /              → /var/www/makao
+  /socket.io/    → 127.0.0.1:3001
 
-systemd makao-backend.service
-  /opt/makao/backend/server.js
+systemd: makao-backend.service
+  kod backendu   → /opt/makao/backend
+  stan pokojów   → /opt/makao/data/rooms.json
 ```
 
-The frontend should be built without `VITE_SERVER_URL` for this deployment. In that mode it uses `window.location.origin`, so the browser connects to the backend through the same public domain.
+Przeglądarka domyślnie łączy się z adresem strony (`window.location.origin`).
+Frontend i proxy Socket.IO powinny zatem działać pod tą samą domeną.
+`VITE_SERVER_URL` określa początkowy adres backendu w aplikacji Android.
 
-## VM Bootstrap
+## Przygotowanie wydania
 
-The prepared installer can do the HTTP deployment after the release is copied:
-
-```bash
-sudo bash /home/mgmichal3/makao-release/deploy/install_on_vm.sh your-domain.example
-```
-
-Manual equivalent, run as a sudo-capable user:
+Zainstaluj zależności zgodnie z [głównym README](../README.md), a następnie
+wykonaj z katalogu repozytorium:
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y nodejs npm nginx certbot python3-certbot-nginx rsync
-sudo useradd --system --home /opt/makao --shell /usr/sbin/nologin makao || true
-sudo mkdir -p /opt/makao/backend /var/www/makao
-sudo chown -R makao:makao /opt/makao
-```
-
-If Debian's packaged Node is too old for the app, install Node.js LTS from NodeSource or another trusted source before enabling the service.
-
-## Install Release
-
-Build the release locally:
-
-```bash
-env -u VITE_SERVER_URL npm --prefix frontend run build
+npm --prefix frontend run build
 ./deploy/build_release.sh
 ```
 
-After copying the release files to the VM:
+Archiwum `output/deploy/makao-release.tar.gz` zawiera backend, wspólny kod,
+zbudowaną stronę i pliki wdrożeniowe. Dowiązanie `backend/shared` jest podczas
+pakowania zastępowane rzeczywistymi plikami. Archiwum nie zawiera danych pokojów.
+
+## Instalacja na serwerze
+
+Przed aktualizacją zachowaj poprzednie pliki aplikacji, konfigurację Nginx,
+jednostkę systemd oraz aktualny zapis pokojów. Instalator zastępuje kod i
+konfigurację witryny oraz restartuje backend. Na serwerze obsługującym inne
+witryny przejrzyj wcześniej jego działania w
+[`install_on_vm.sh`](install_on_vm.sh), w tym obsługę domyślnej witryny Nginx.
+
+Skopiuj archiwum i połącz się ze skonfigurowanym serwerem:
 
 ```bash
-cd /opt/makao/backend
-sudo -u makao npm ci --omit=dev
+scp output/deploy/makao-release.tar.gz makao-server:/tmp/
+ssh makao-server
+```
 
-sudo cp /tmp/makao-backend.service /etc/systemd/system/makao-backend.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now makao-backend
+Na serwerze rozpakuj wydanie i uruchom instalator:
 
-sudo cp /tmp/nginx-makao.conf /etc/nginx/sites-available/makao
-sudo ln -sf /etc/nginx/sites-available/makao /etc/nginx/sites-enabled/makao
+```bash
+mkdir -p "$HOME/releases"
+tar -xzf /tmp/makao-release.tar.gz -C "$HOME/releases"
+sudo bash "$HOME/releases/makao-release/deploy/install_on_vm.sh" \
+  game.example "$HOME/releases/makao-release" 203.0.113.10
+```
+
+Instalator tworzy konto systemowe `makao`, instaluje zależności, kopiuje pliki
+aplikacji i uruchamia `makao-backend.service`. W systemach z SELinux dopuszcza
+połączenia proxy Nginx. Jeśli działa `firewalld`, dodaje usługi HTTP i HTTPS.
+Reguły sieciowe dostawcy chmury trzeba skonfigurować oddzielnie.
+
+## HTTPS i odbiór wdrożenia
+
+Skieruj rekord DNS `A` domeny na publiczny adres serwera. Udostępnij porty TCP
+80 i 443 w regułach sieciowych serwera i dostawcy chmury. Następnie wykonaj:
+
+```bash
+sudo certbot --nginx -d game.example
 sudo nginx -t
-sudo systemctl reload nginx
+systemctl status makao-backend
 ```
 
-## HTTPS
-
-After replacing `makao.example.com` in the Nginx config with the real domain and confirming DNS:
+Sprawdź stronę w przeglądarce oraz utworzenie pokoju i dołączenie drugiego
+gracza. Z komputera z zainstalowanymi zależnościami projektu można dodatkowo
+uruchomić:
 
 ```bash
-sudo certbot --nginx -d your-domain.example
+node scripts/production_release_smoke.mjs https://game.example
 ```
 
-Certbot will edit the Nginx config to add TLS and redirect HTTP to HTTPS.
+Ten test tworzy tymczasowy pokój, łączy dwóch klientów przez WebSocket,
+sprawdza prywatne odpowiedzi z tokenami sesji, a następnie opuszcza i usuwa pokój.
+
+## Stan pokojów i aktualizacje
+
+Jednostka systemd ustawia
+`MAKAO_STATE_FILE=/opt/makao/data/rooms.json`. Backend zapisuje stan atomowo,
+a przy poprawnym zamknięciu procesu opróżnia kolejkę zapisów. Katalog danych
+jest oddzielony od kodu synchronizowanego przez `rsync --delete`, dzięki czemu
+instalator nie usuwa go przy aktualizacji.
+
+Dostęp do pliku stanu powinno mieć wyłącznie konto usługi: zawiera dane
+rozgrywek i sesji. Nie umieszczaj go w repozytorium ani w publicznych archiwach.
+Na serwerze produkcyjnym pozostaw wyłączone `MAKAO_ENABLE_TEST_HOOKS` i
+`MAKAO_ENABLE_LEGACY_GAME_ACTIONS`.
+
+Jeśli aktualizacja nie przejdzie odbioru, przywróć poprzedni kod i konfigurację,
+sprawdź `nginx -t`, a następnie uruchom ponownie backend i przeładuj Nginx.
+Nie nadpisuj bieżącego zapisu pokojów starszą kopią bez oceny wpływu na trwające
+rozgrywki.
+
+Lokalny test zachowania sesji i odporności na restart:
+
+```bash
+node scripts/reliable_disconnect_smoke.mjs
+```
+
+## Android
+
+Wersję aplikacji określa
+[`frontend/android/version.properties`](../frontend/android/version.properties).
+Przed dystrybucją nowej wersji zwiększ `VERSION_CODE` i zaktualizuj
+`VERSION_NAME`. Plik APK ma nazwę `Makao-v<WERSJA>-build<NUMER>-<wariant>.apk`.
+
+Z katalogu repozytorium zbuduj APK dla docelowego serwera:
+
+```bash
+./scripts/android_build_debug.sh https://game.example
+APK="$(./scripts/android_apk_path.sh debug)"
+APK_NAME="$(basename "$APK")"
+```
+
+Wybierz konkretne urządzenie z `adb devices -l`. W poniższym przykładzie
+zastąp `NUMER_URZADZENIA` jego identyfikatorem:
+
+```bash
+DEVICE=NUMER_URZADZENIA
+adb -s "$DEVICE" install -r "$APK"
+adb -s "$DEVICE" push "$APK" "/sdcard/Download/$APK_NAME"
+```
+
+Jest to kompilacja debug do testowania. Konfiguracja podpisywania wydania
+produkcyjnego i prywatny klucz podpisu nie są częścią tego procesu.

@@ -4,9 +4,9 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
 PACKAGE_NAME="pl.makao.zeznajomymi"
-ACTIVITY_NAME="$PACKAGE_NAME/.MakaoNativeActivity"
+ACTIVITY_NAME="$PACKAGE_NAME/.MakaoNativeTestLauncherActivity"
 SERVER_URL="http://127.0.0.1:9"
-SCENARIOS="local_draw_from_deck,local_throw_to_stack,hand_focus_reveal,opponent_play_history,opponent_draw_history,opponent_penalty_history,joker_declaration_panel"
+SCENARIOS="local_draw_from_deck,local_throw_to_stack,hand_focus_reveal,opponent_play_history,opponent_draw_history,opponent_penalty_history,joker_declaration_panel,joker_skip_response_panel"
 DURATION_SEC="7"
 FRAME_FPS="4"
 OUT_DIR=""
@@ -90,9 +90,9 @@ if [ -z "$OUT_DIR" ]; then
 fi
 mkdir -p "$OUT_DIR"
 
-APK="$PROJECT_DIR/frontend/android/app/build/outputs/apk/debug/app-debug.apk"
+APK="$("$PROJECT_DIR/scripts/android_apk_path.sh" debug)"
 SUMMARY_FILE="$OUT_DIR/summary.txt"
-ERROR_PATTERN='FATAL EXCEPTION| E AndroidRuntime|UnsatisfiedLinkError|ClassNotFoundException|NoClassDefFoundError|NullPointerException|SecurityException|ANR|Mixed Content|TypeError|ReferenceError|ERR_'
+ERROR_PATTERN='FATAL EXCEPTION|AndroidRuntime|UnsatisfiedLinkError|ClassNotFoundException|NoClassDefFoundError|NullPointerException|SecurityException|ANR|Mixed Content|Capacitor/Console|TypeError|ReferenceError|ERR_'
 
 echo "Device: ${DEVICE_ID:-unknown}" | tee "$SUMMARY_FILE"
 echo "Server URL: $SERVER_URL" | tee -a "$SUMMARY_FILE"
@@ -112,7 +112,7 @@ wake_device() {
   adb shell svc power stayon true >/dev/null 2>&1 || true
   adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
   adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
-  adb shell input keyevent 82 >/dev/null 2>&1 || true
+  adb shell cmd statusbar collapse >/dev/null 2>&1 || true
   sleep 1
 }
 
@@ -148,7 +148,7 @@ is_frame_blank() {
 
 motion_min_diff_for_scenario() {
   case "$1" in
-    local_draw_from_deck|local_throw_to_stack|hand_focus_reveal|opponent_play_history|opponent_draw_history|opponent_penalty_history|joker_declaration_panel)
+    local_draw_from_deck|local_throw_to_stack|hand_focus_reveal|opponent_play_history|opponent_draw_history|opponent_penalty_history|joker_declaration_panel|joker_skip_response_panel)
       echo "0.006"
       ;;
     *)
@@ -215,6 +215,8 @@ record_scenario() {
 
   wake_device
   adb logcat -c || true
+  local logcat_since
+  logcat_since="$(adb shell "date '+%m-%d %H:%M:%S.000'" 2>/dev/null | tr -d '\r')"
   adb shell rm -f "$remote_file" >/dev/null 2>&1 || true
   adb shell screenrecord --time-limit "$DURATION_SEC" "$remote_file" >/dev/null 2>&1 &
   local record_pid=$!
@@ -223,9 +225,13 @@ record_scenario() {
     --es debugScenario "$scenario" \
     --es serverUrl "$SERVER_URL" \
     --es playerName Codex >/dev/null
+  local app_pids
+  app_pids="$(adb shell pidof "$PACKAGE_NAME" 2>/dev/null | tr -d '\r' || true)"
   wait "$record_pid" || true
 
-  adb logcat -d > "$log_file"
+  adb logcat -d -v threadtime -T "$logcat_since" \
+    | node "$PROJECT_DIR/scripts/android_logcat_filter.mjs" --package "$PACKAGE_NAME" --pids "$app_pids" \
+    > "$log_file"
   assert_process_running
   if rg -n "$ERROR_PATTERN" "$log_file" > "$OUT_DIR/errors-${scenario}.txt"; then
     echo "FAIL: app-level error pattern found in logcat-${scenario}.txt" | tee -a "$SUMMARY_FILE"

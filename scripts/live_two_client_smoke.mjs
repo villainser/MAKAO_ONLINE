@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { filterAppLogcat, findAppLogcatErrors } from "./android_logcat_filter.mjs";
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -17,6 +18,7 @@ const EVENTS = {
   RECONNECT_SESSION: "reconnect_session",
   ROOM_STATE_UPDATE: "room_state_update",
   GAME_STATE_UPDATE: "game_state_update",
+  GAME_ACTION: "game_action",
   TOGGLE_READY: "toggle_ready",
   UPDATE_SETTINGS: "update_settings",
   START_GAME: "start_game",
@@ -24,7 +26,6 @@ const EVENTS = {
   HOST_END_GAME: "host_end_game",
   PLAY_CARDS: "play_cards",
   DRAW_CARD: "draw_card",
-  ACCEPT_PENALTY: "accept_penalty",
   ACCEPT_SKIP: "accept_skip",
   DECLARE_MAKAO: "declare_makao",
   CATCH_MAKAO: "catch_makao",
@@ -33,8 +34,9 @@ const EVENTS = {
 };
 
 const PACKAGE_NAME = "pl.makao.zeznajomymi";
-const ACTIVITY_NAME = `${PACKAGE_NAME}/.MakaoNativeActivity`;
-const ERROR_PATTERN = /FATAL EXCEPTION| E AndroidRuntime|UnsatisfiedLinkError|ClassNotFoundException|NoClassDefFoundError|NullPointerException|SecurityException|ANR|Mixed Content|TypeError|ReferenceError|ERR_/;
+const ACTIVITY_NAME = `${PACKAGE_NAME}/.MakaoNativeTestLauncherActivity`;
+const knownAppPids = new Set();
+let logcatSince = "";
 
 function parseArgs(argv) {
   const options = {
@@ -144,6 +146,7 @@ function wakeDevice() {
   adb(["shell", "svc", "power", "stayon", "true"], { check: false });
   adb(["shell", "input", "keyevent", "KEYCODE_WAKEUP"], { check: false });
   adb(["shell", "wm", "dismiss-keyguard"], { check: false });
+  adb(["shell", "cmd", "statusbar", "collapse"], { check: false });
 }
 
 async function tapAndroid(label, xRatio, yRatio, referencePath) {
@@ -264,22 +267,37 @@ function assertCropChanged(beforeLabel, afterLabel, region, label, minMean) {
 
 function assertCleanLogcat(filePath) {
   const logcat = fs.readFileSync(filePath, "utf8");
-  const matches = logcat.split("\n").filter(line => ERROR_PATTERN.test(line));
+  const matches = findAppLogcatErrors(logcat);
   if (matches.length > 0) {
     fs.writeFileSync(path.join(options.outDir, `errors-${path.basename(filePath)}`), matches.join("\n"));
     throw new Error(`App-level error pattern found in ${filePath}`);
   }
 }
 
+function resetAppLogcatWindow() {
+  adb(["logcat", "-c"], { check: false });
+  logcatSince = String(adb(["shell", "date '+%m-%d %H:%M:%S.000'"], { check: false })).trim();
+  knownAppPids.clear();
+}
+
 async function captureAndroid(label) {
   wakeDevice();
   await sleep(400);
-  const pid = String(adb(["shell", "pidof", PACKAGE_NAME], { check: false })).trim();
-  if (!pid) throw new Error("Native app process is not running");
+  const currentPids = String(adb(["shell", "pidof", PACKAGE_NAME], { check: false }))
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (currentPids.length === 0) throw new Error("Native app process is not running");
+  currentPids.forEach(pid => knownAppPids.add(pid));
 
   const logPath = path.join(options.outDir, `logcat-${label}.txt`);
   const screenPath = path.join(options.outDir, `${label}.png`);
-  fs.writeFileSync(logPath, adb(["logcat", "-d"]));
+  const logcatArgs = ["logcat", "-d", "-v", "threadtime"];
+  if (logcatSince) logcatArgs.push("-T", logcatSince);
+  fs.writeFileSync(logPath, filterAppLogcat(adb(logcatArgs), {
+    packageName: PACKAGE_NAME,
+    pids: [...knownAppPids]
+  }));
   fs.writeFileSync(screenPath, adb(["exec-out", "screencap", "-p"], { encoding: null }));
   assertPngNotBlank(screenPath);
   assertCleanLogcat(logPath);
@@ -478,6 +496,33 @@ async function main() {
   });
   log(`Node socket connected: ${socket.id}`);
 
+  let reliableActionSequence = 0;
+  async function emitReliableGameAction(actionType, data = {}, { allowRejected = false } = {}) {
+    const envelope = {
+      actionId: `live_smoke_${Date.now()}_${++reliableActionSequence}`,
+      actionType,
+      expectedStateVersion: Number(live.game?.stateVersion || 0),
+      data
+    };
+
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      const response = await new Promise((resolve, reject) => {
+        socket.timeout(8000).emit(EVENTS.GAME_ACTION, envelope, (error, ack) => {
+          if (error) reject(new Error(`game_action ${actionType} ack timeout/error: ${error.message || error}`));
+          else resolve(ack || { success: false, error: "Missing game_action ACK" });
+        });
+      });
+      if (response.success) return response;
+      if (response.retryable === true && response.code === "PERSISTENCE_FAILED" && attempt < 4) {
+        await sleep(500);
+        continue;
+      }
+      if (allowRejected) return response;
+      throw new Error(`game_action ${actionType} failed: ${response.error || response.code || "unknown error"}`);
+    }
+    throw new Error(`game_action ${actionType} exhausted durability retries.`);
+  }
+
   const created = await emitAck(socket, EVENTS.CREATE_ROOM, {
     playerName: options.nodeName,
     clientId: nodeClientId,
@@ -492,7 +537,7 @@ async function main() {
   log(`Created room: ${roomId}`);
 
   wakeDevice();
-  adb(["logcat", "-c"], { check: false });
+  resetAppLogcatWindow();
   adb([
     "shell", "am", "start", "-S", "-n", ACTIVITY_NAME,
     "--es", "serverUrl", options.androidServer,
@@ -574,7 +619,7 @@ async function main() {
 
   async function relaunchPhoneClient(label) {
     wakeDevice();
-    adb(["logcat", "-c"], { check: false });
+    resetAppLogcatWindow();
     adb([
       "shell", "am", "start", "-S", "-n", ACTIVITY_NAME,
       "--es", "serverUrl", options.androidServer,
@@ -612,7 +657,7 @@ async function main() {
     await captureAndroid("01-opponent-play-before");
     const card = cardById(live.game, "live_node_8_hearts");
     if (!card) throw new Error("Seeded opponent play card missing from Node hand");
-    socket.emit(EVENTS.PLAY_CARDS, { cardIds: [card.cardInstanceId] });
+    await emitReliableGameAction(EVENTS.PLAY_CARDS, { cardIds: [card.cardInstanceId] });
     await waitFor("opponent play history", () =>
       live.game?.moveHistory?.some(entry => entry.version > version && entry.type === "play_cards")
     );
@@ -631,7 +676,7 @@ async function main() {
     const drawVersion = await seed("node_draw");
     const before = live.game.myHand.length;
     await captureAndroid("03-opponent-draw-before");
-    socket.emit(EVENTS.DRAW_CARD);
+    await emitReliableGameAction(EVENTS.DRAW_CARD);
     await waitFor("opponent draw history", () =>
       live.game?.moveHistory?.some(entry => entry.version > drawVersion && entry.type === "draw_card") &&
       live.game?.myHand?.length >= before + 1
@@ -654,13 +699,13 @@ async function main() {
     await captureAndroid("04-makao-before-declare");
     const card = cardById(live.game, "live_node_makao_8_hearts");
     if (!card) throw new Error("Seeded Makao play card missing from Node hand");
-    socket.emit(EVENTS.PLAY_CARDS, { cardIds: [card.cardInstanceId] });
+    await emitReliableGameAction(EVENTS.PLAY_CARDS, { cardIds: [card.cardInstanceId] });
     await waitFor("missing Makao after play", () =>
       live.game?.moveHistory?.some(entry => entry.version > version && entry.type === "play_cards") &&
       live.game?.handCounts?.[nodeClientId] === 1 &&
       live.game?.makao?.[nodeClientId]?.declared === false
     );
-    socket.emit(EVENTS.DECLARE_MAKAO);
+    await emitReliableGameAction(EVENTS.DECLARE_MAKAO);
     await waitFor("Makao declaration", () => live.game?.makao?.[nodeClientId]?.declared === true);
     await sleep(1000);
     await captureAndroid("04-makao-declared");
@@ -701,7 +746,7 @@ async function main() {
     const version = await seed(scenario);
     const card = cardById(live.game, cardId);
     if (!card) throw new Error(`Seeded rule card missing for ${scenario}: ${cardId}`);
-    socket.emit(EVENTS.PLAY_CARDS, { cardIds: [card.cardInstanceId], ...payload });
+    await emitReliableGameAction(EVENTS.PLAY_CARDS, { cardIds: [card.cardInstanceId], ...payload });
     await waitFor(`rule scenario ${scenario}`, () =>
       live.game?.moveHistory?.some(entry => entry.version > version && entry.type === "play_cards")
     );
@@ -721,14 +766,21 @@ async function main() {
     const card = cardById(live.game, cardId);
     if (!card) throw new Error(`Seeded rejected-rule card missing for ${scenario}: ${cardId}`);
     const errorsBefore = live.errors.length;
-    socket.emit(EVENTS.PLAY_CARDS, { cardIds: [card.cardInstanceId], ...payload });
-    await waitFor(`rejected rule scenario ${scenario}`, () => live.errors.length > errorsBefore);
-    const newErrors = live.errors.slice(errorsBefore);
-    const message = newErrors.at(-1) || "";
+    const response = await emitReliableGameAction(
+      EVENTS.PLAY_CARDS,
+      { cardIds: [card.cardInstanceId], ...payload },
+      { allowRejected: true }
+    );
+    assertCondition(response?.success === false, `${scenario} unexpectedly returned a successful ACK.`);
+    const message = response?.error || "";
     if (errorPattern && !errorPattern.test(message)) {
       throw new Error(`Unexpected rejection for ${scenario}: ${message}`);
     }
-    live.errors.splice(errorsBefore, newErrors.length);
+    const expectedErrorIndex = live.errors.findIndex((error, index) =>
+      index >= errorsBefore && error === message
+    );
+    assertCondition(expectedErrorIndex >= errorsBefore, `${scenario} did not emit its expected server error event.`);
+    live.errors.splice(expectedErrorIndex, 1);
     assertCondition(!live.game?.moveHistory?.some(entry => entry.version > version && entry.type === "play_cards"), `${scenario} unexpectedly recorded play_cards.`);
     assertState(live.game, message);
     results.push({
@@ -745,7 +797,7 @@ async function main() {
 
   async function runRuleSocketActionScenario({ scenario, event, expectedMoveType, assertState }) {
     const version = await seed(scenario);
-    socket.emit(event);
+    await emitReliableGameAction(event);
     await waitFor(`rule socket action ${scenario}`, () =>
       live.game?.moveHistory?.some(entry => entry.version > version && entry.type === expectedMoveType)
     );
@@ -759,6 +811,60 @@ async function main() {
       skipTurns: live.game.skipTurns || {}
     });
     log(`RULE PASS ${scenario}`);
+  }
+
+  async function runPenaltyPullsScenario() {
+    const scenario = "rule_penalty_accept_node";
+    await seed(scenario);
+    const initialHandCount = live.game.myHand.length;
+    const drawVersions = [];
+
+    for (let pull = 1; pull <= 6; pull += 1) {
+      const previousVersion = latestHistoryVersion(live.game);
+      await emitReliableGameAction(EVENTS.DRAW_CARD);
+      await waitFor(`penalty pull ${pull}/6`, () =>
+        live.game?.moveHistory?.some(entry =>
+          entry.version > previousVersion && entry.type === "draw_card" && entry.playerId === nodeClientId
+        ) && live.game?.myHand?.length === initialHandCount + pull
+      );
+
+      const drawEntry = live.game.moveHistory
+        .filter(entry => entry.version > previousVersion && entry.type === "draw_card" && entry.playerId === nodeClientId)
+        .sort((left, right) => right.version - left.version)[0];
+      assertCondition(Boolean(drawEntry), `Penalty pull ${pull} did not record a public draw_card move.`);
+      drawVersions.push(drawEntry.version);
+
+      if (pull < 6) {
+        assertCondition(live.game.activeEffect?.type === "draw_penalty", `Penalty cleared too early after pull ${pull}.`);
+        assertCondition(live.game.activeEffect?.amount === 6, `Penalty amount changed after pull ${pull}.`);
+        assertCondition(
+          live.game.activeEffect?.penaltyDrawnCount === pull,
+          `Penalty progress mismatch after pull ${pull}: ${live.game.activeEffect?.penaltyDrawnCount}`
+        );
+        assertCondition(currentPlayerId(live.game) === nodeClientId, `Turn advanced before pull ${pull + 1}.`);
+      }
+    }
+
+    assertCondition(!live.game.activeEffect, "Six separate pulls should clear the six-card penalty.");
+    assertCondition(live.game.myHand.length === initialHandCount + 6, `Penalty hand count mismatch: ${live.game.myHand.length}`);
+    assertCondition(currentPlayerId(live.game) === phonePlayerId, "Completing the penalty did not advance to the phone player.");
+    assertCondition(
+      new Set(drawVersions).size === 6 && drawVersions.every((version, index) => index === 0 || version > drawVersions[index - 1]),
+      `Penalty pulls did not produce six distinct increasing versions: ${drawVersions.join(",")}`
+    );
+    assertCondition(
+      !live.game.moveHistory.some(entry => entry.type === "accept_penalty" && entry.playerId === nodeClientId),
+      "Penalty pull flow must not use legacy accept_penalty."
+    );
+    results.push({
+      scenario: "rule_penalty_one_card_per_pull_node",
+      ok: true,
+      pulls: 6,
+      drawVersions,
+      handCount: live.game.myHand.length,
+      currentPlayerId: currentPlayerId(live.game)
+    });
+    log("RULE PASS rule_penalty_one_card_per_pull_node");
   }
 
   async function runRuleScenarios() {
@@ -786,19 +892,7 @@ async function main() {
       }
     });
 
-    await runRuleSocketActionScenario({
-      scenario: "rule_penalty_accept_node",
-      event: EVENTS.ACCEPT_PENALTY,
-      expectedMoveType: "accept_penalty",
-      assertState: state => {
-        assertCondition(!state.activeEffect, "Accepting a penalty should clear activeEffect.");
-        assertCondition(state.myHand.length === 8, `Accept penalty hand count mismatch: ${state.myHand.length}`);
-        assertCondition(currentPlayerId(state) === phonePlayerId, "Accepting a penalty did not advance to the phone player.");
-        const history = state.moveHistory.find(entry => entry.version > 1 && entry.type === "accept_penalty");
-        assertCondition(history?.details?.amount === 6, `Accept penalty history amount mismatch: ${history?.details?.amount}`);
-        assertCondition(history?.details?.drawnCount === 6, `Accept penalty drawnCount mismatch: ${history?.details?.drawnCount}`);
-      }
-    });
+    await runPenaltyPullsScenario();
 
     await runRuleSocketActionScenario({
       scenario: "rule_pause_accept_node",
@@ -1005,13 +1099,14 @@ async function main() {
       event: EVENTS.DRAW_CARD,
       expectedMoveType: "draw_card",
       assertState: state => {
-        assertCondition(!state.activeEffect, "Drawing during a suit request should clear activeEffect.");
+        assertCondition(state.activeEffect?.type === "suit_request", "Matching draw should keep the suit request active.");
+        assertCondition(state.activeEffect?.targetPlayerId === nodeClientId, "Matching draw should keep the request on the drawing player.");
         assertCondition(state.myHand.length === 2, `Suit request draw hand count mismatch: ${state.myHand.length}`);
-        assertCondition(!state.hasDrawnCardThisTurn, "Suit request draw should not leave a playable drawn-card decision.");
-        assertCondition(!state.drawnCardInstanceId, `Suit request draw should clear drawnCardInstanceId: ${state.drawnCardInstanceId}`);
-        assertCondition(currentPlayerId(state) === phonePlayerId, "Suit request draw did not advance to the phone player.");
+        assertCondition(state.hasDrawnCardThisTurn, "Matching suit draw should leave a playable drawn-card decision.");
+        assertCondition(state.drawnCardInstanceId === "live_node_rule_request_draw_8_spades", `Suit request drawnCardInstanceId mismatch: ${state.drawnCardInstanceId}`);
+        assertCondition(currentPlayerId(state) === nodeClientId, "Matching suit draw should keep the Node player current.");
         const history = state.moveHistory.find(entry => entry.version > 1 && entry.type === "draw_card");
-        assertCondition(history?.details?.canPlayDrawnCard === false, "Suit request draw history should mark canPlayDrawnCard=false.");
+        assertCondition(history?.details?.canPlayDrawnCard === true, "Matching suit request draw should mark canPlayDrawnCard=true.");
       }
     });
 
@@ -1040,13 +1135,14 @@ async function main() {
       event: EVENTS.DRAW_CARD,
       expectedMoveType: "draw_card",
       assertState: state => {
-        assertCondition(!state.activeEffect, "Drawing during a rank request should clear activeEffect.");
+        assertCondition(state.activeEffect?.type === "rank_request", "Matching draw should keep the rank request active.");
+        assertCondition(state.activeEffect?.targetPlayerId === nodeClientId, "Matching draw should keep the rank request on the drawing player.");
         assertCondition(state.myHand.length === 2, `Rank request draw hand count mismatch: ${state.myHand.length}`);
-        assertCondition(!state.hasDrawnCardThisTurn, "Rank request draw should not leave a playable drawn-card decision.");
-        assertCondition(!state.drawnCardInstanceId, `Rank request draw should clear drawnCardInstanceId: ${state.drawnCardInstanceId}`);
-        assertCondition(currentPlayerId(state) === phonePlayerId, "Rank request draw did not advance to the phone player.");
+        assertCondition(state.hasDrawnCardThisTurn, "Matching rank draw should leave a playable drawn-card decision.");
+        assertCondition(state.drawnCardInstanceId === "live_node_rule_rank_draw_10_spades", `Rank request drawnCardInstanceId mismatch: ${state.drawnCardInstanceId}`);
+        assertCondition(currentPlayerId(state) === nodeClientId, "Matching rank draw should keep the Node player current.");
         const history = state.moveHistory.find(entry => entry.version > 1 && entry.type === "draw_card");
-        assertCondition(history?.details?.canPlayDrawnCard === false, "Rank request draw history should mark canPlayDrawnCard=false.");
+        assertCondition(history?.details?.canPlayDrawnCard === true, "Matching rank request draw should mark canPlayDrawnCard=true.");
       }
     });
 
@@ -1200,7 +1296,7 @@ async function main() {
 
     const card = cardById(live.game, "live_node_rule_king_spades");
     if (!card) throw new Error("Seeded disconnect scenario card missing: live_node_rule_king_spades");
-    socket.emit(EVENTS.PLAY_CARDS, { cardIds: [card.cardInstanceId] });
+    await emitReliableGameAction(EVENTS.PLAY_CARDS, { cardIds: [card.cardInstanceId] });
     await waitFor("offline extra blocking pause", () =>
       live.game?.moveHistory?.some(entry => entry.version > version && entry.type === "game_paused_disconnect" && entry.playerId === extraClientId) &&
       live.game?.paused === true &&
@@ -1243,7 +1339,7 @@ async function main() {
     const version = await seed("phone_missing_makao_expired");
     const before = live.game.handCounts[phonePlayerId];
     await captureAndroid("05-makao-catch-before");
-    socket.emit(EVENTS.CATCH_MAKAO, { targetPlayerId: phonePlayerId });
+    await emitReliableGameAction(EVENTS.CATCH_MAKAO, { targetPlayerId: phonePlayerId });
     await waitFor("Makao catch", () =>
       live.game?.moveHistory?.some(entry => entry.version > version && entry.type === "catch_makao") &&
       live.game?.handCounts?.[phonePlayerId] >= before + 5
@@ -1287,13 +1383,14 @@ async function main() {
   }
 
   async function runAutoPenaltyScenario() {
-    const version = await seed("node_missing_makao_expired");
+    const version = await seed("node_missing_makao_window_expired");
     const before = live.game.myHand.length;
     await captureAndroid("08-makao-auto-penalty-before");
-    socket.emit(EVENTS.DRAW_CARD);
-    await waitFor("expired Makao penalty", () =>
+    await emitReliableGameAction(EVENTS.DRAW_CARD);
+    await waitFor("draw after expired Makao window", () =>
       live.game?.moveHistory?.some(entry => entry.version > version && entry.type === "draw_card") &&
-      live.game?.myHand?.length >= before + 5
+      live.game?.myHand?.length === before + 1 &&
+      !live.game?.makao?.[nodeClientId]
     );
     await sleep(1000);
     await captureAndroid("08-makao-auto-penalty");
@@ -1301,10 +1398,10 @@ async function main() {
       "08-makao-auto-penalty-before",
       "08-makao-auto-penalty",
       { x: 0.34, y: 0.04, width: 0.36, height: 0.24 },
-      "opponent status changes after expired Makao penalty",
+      "opponent status changes after expired Makao window",
       0.02
     );
-    results.push({ scenario: "makao_auto_penalty", ok: true, nodeHandCount: live.game.myHand.length });
+    results.push({ scenario: "makao_expired_window_draw", ok: true, nodeHandCount: live.game.myHand.length });
   }
 
   await joinExtraClient();

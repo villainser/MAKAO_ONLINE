@@ -4,6 +4,14 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertCompletedPenaltyPull,
+  assertFirstPenaltyPull
+} from "./phone_native_flow_rules.mjs";
+import {
+  filterAppLogcat,
+  findAppLogcatErrors
+} from "./android_logcat_filter.mjs";
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -20,8 +28,9 @@ const EVENTS = {
 };
 
 const PACKAGE_NAME = "pl.makao.zeznajomymi";
-const ACTIVITY_NAME = `${PACKAGE_NAME}/.MakaoNativeActivity`;
-const ERROR_PATTERN = /FATAL EXCEPTION| E AndroidRuntime|UnsatisfiedLinkError|ClassNotFoundException|NoClassDefFoundError|NullPointerException|SecurityException|ANR|Mixed Content|TypeError|ReferenceError|ERR_/;
+const ACTIVITY_NAME = `${PACKAGE_NAME}/.MakaoNativeTestLauncherActivity`;
+const knownAppPids = new Set();
+let logcatSince = "";
 
 function parseArgs(argv) {
   const options = {
@@ -134,7 +143,7 @@ function wakeDevice() {
   adb(["shell", "svc", "power", "stayon", "true"], { check: false });
   adb(["shell", "input", "keyevent", "KEYCODE_WAKEUP"], { check: false });
   adb(["shell", "wm", "dismiss-keyguard"], { check: false });
-  adb(["shell", "input", "keyevent", "82"], { check: false });
+  adb(["shell", "cmd", "statusbar", "collapse"], { check: false });
 }
 
 function assertToolAvailable(command, args, message) {
@@ -186,22 +195,38 @@ function assertPngNotBlank(filePath) {
 
 function assertCleanLogcat(filePath) {
   const logcat = fs.readFileSync(filePath, "utf8");
-  const matches = logcat.split("\n").filter(line => ERROR_PATTERN.test(line));
+  const matches = findAppLogcatErrors(logcat);
   if (matches.length > 0) {
     fs.writeFileSync(path.join(options.outDir, `errors-${path.basename(filePath)}`), matches.join("\n"));
     throw new Error(`App-level error pattern found in ${filePath}`);
   }
 }
 
+function resetAppLogcatWindow() {
+  adb(["logcat", "-c"], { check: false });
+  logcatSince = String(adb(["shell", "date '+%m-%d %H:%M:%S.000'"], { check: false })).trim();
+  knownAppPids.clear();
+}
+
 async function captureAndroid(label) {
   wakeDevice();
   await sleep(400);
-  const pid = String(adb(["shell", "pidof", PACKAGE_NAME], { check: false })).trim();
-  if (!pid) throw new Error("Native app process is not running");
+  const currentPids = String(adb(["shell", "pidof", PACKAGE_NAME], { check: false }))
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (currentPids.length === 0) throw new Error("Native app process is not running");
+  currentPids.forEach(pid => knownAppPids.add(pid));
 
   const logPath = path.join(options.outDir, `logcat-${label}.txt`);
   const screenPath = path.join(options.outDir, `${label}.png`);
-  fs.writeFileSync(logPath, adb(["logcat", "-d"]));
+  const logcatArgs = ["logcat", "-d", "-v", "threadtime"];
+  if (logcatSince) logcatArgs.push("-T", logcatSince);
+  const rawLogcat = adb(logcatArgs);
+  fs.writeFileSync(logPath, filterAppLogcat(rawLogcat, {
+    packageName: PACKAGE_NAME,
+    pids: [...knownAppPids]
+  }));
   fs.writeFileSync(screenPath, adb(["exec-out", "screencap", "-p"], { encoding: null }));
   assertPngNotBlank(screenPath);
   assertCleanLogcat(logPath);
@@ -400,7 +425,7 @@ async function main() {
   log(`Created room: ${roomId}`);
 
   wakeDevice();
-  adb(["logcat", "-c"], { check: false });
+  resetAppLogcatWindow();
   adb([
     "shell", "am", "start", "-S", "-n", ACTIVITY_NAME,
     "--es", "serverUrl", options.androidServer,
@@ -429,7 +454,7 @@ async function main() {
 
   async function relaunchPhoneClient(label) {
     wakeDevice();
-    adb(["logcat", "-c"], { check: false });
+    resetAppLogcatWindow();
     adb([
       "shell", "am", "start", "-S", "-n", ACTIVITY_NAME,
       "--es", "serverUrl", options.androidServer,
@@ -455,29 +480,85 @@ async function main() {
     const version = await seed("phone_penalty_accept");
     const beforeHandCount = live.game?.handCounts?.[phonePlayerId];
     assertCondition(beforeHandCount === 1, `phone_penalty_accept expected phone hand count 1, got ${beforeHandCount}`);
+    const penaltyAmount = live.game?.activeEffect?.amount;
+    assertCondition(penaltyAmount === 2, `phone_penalty_accept expected active penalty +2, got ${penaltyAmount}`);
     const beforePath = await captureAndroid("01-penalty-before");
     const layout = deriveLayoutFromScreenshot(beforePath);
-    await swipeAndroid("phone penalty deck pull", layout.points.deckPullStart, layout.points.deckPullEnd, 760);
-    await waitFor("phone accepted draw penalty by deck pull", () =>
-      live.game?.moveHistory?.some(entry =>
-        entry.version > version &&
-        entry.type === "accept_penalty" &&
-        entry.playerId === phonePlayerId
-      ) &&
-      live.game?.handCounts?.[phonePlayerId] === beforeHandCount + 2 &&
-      !live.game?.activeEffect,
-      16000
-    );
+    await swipeAndroid("phone penalty first one-card pull", layout.points.deckPullStart, layout.points.deckPullEnd, 760);
+    let firstPull = null;
+    await waitFor("phone first one-card penalty draw", () => {
+      try {
+        firstPull = assertFirstPenaltyPull({
+          state: live.game,
+          playerId: phonePlayerId,
+          beforeHandCount,
+          afterVersion: version,
+          penaltyAmount
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    }, 16000);
     await sleep(1100);
-    await captureAndroid("02-penalty-after");
-    const afterHandCount = live.game.handCounts[phonePlayerId];
-    assertCondition(afterHandCount === beforeHandCount + 2, `Penalty draw count mismatch: expected ${beforeHandCount + 2}, got ${afterHandCount}`);
+    const afterFirstPath = await captureAndroid("02-penalty-after-first-pull");
+    assertCondition(
+      !live.game?.moveHistory?.some(entry => entry.version > version && entry.type === "accept_penalty" && entry.playerId === phonePlayerId),
+      "Native deck gesture must not emit legacy accept_penalty."
+    );
+
+    if (firstPull.counterAvailable) {
+      log(`First penalty card ${firstPull.drawnCardInstanceId} is a playable counter; leaving the explicit play-or-accept choice open.`);
+      results.push({
+        scenario: "phone_penalty_first_pull_counter_choice",
+        ok: true,
+        beforeHandCount,
+        afterHandCount: firstPull.handCount,
+        penaltyAmount,
+        completion: "playable_first_counter_requires_player_choice",
+        firstPull,
+        coordinates: { firstPull: layout.points }
+      });
+      return;
+    }
+
+    const secondLayout = deriveLayoutFromScreenshot(afterFirstPath);
+    await swipeAndroid(
+      "phone penalty second one-card pull",
+      secondLayout.points.deckPullStart,
+      secondLayout.points.deckPullEnd,
+      760
+    );
+    let secondPull = null;
+    await waitFor("phone second one-card penalty draw completes +2", () => {
+      try {
+        secondPull = assertCompletedPenaltyPull({
+          state: live.game,
+          playerId: phonePlayerId,
+          beforeHandCount,
+          afterVersion: firstPull.eventVersion,
+          penaltyAmount
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    }, 16000);
+    await sleep(1100);
+    await captureAndroid("03-penalty-after-second-pull");
     results.push({
-      scenario: "phone_penalty_accept_deck_pull",
+      scenario: "phone_penalty_one_card_per_pull",
       ok: true,
       beforeHandCount,
-      afterHandCount,
-      coordinates: layout.points
+      afterHandCount: secondPull.handCount,
+      penaltyAmount,
+      completion: "two_distinct_draw_card_versions",
+      firstPull,
+      secondPull,
+      coordinates: {
+        firstPull: layout.points,
+        secondPull: secondLayout.points
+      }
     });
   }
 
@@ -486,7 +567,7 @@ async function main() {
     const beforeHandCount = live.game?.handCounts?.[phonePlayerId];
     const beforeTopCard = live.game?.topCard;
     assertCondition(beforeHandCount === 3, `phone_plain_play_ready expected phone hand count 3, got ${beforeHandCount}`);
-    const beforePath = await captureAndroid("03-play-before");
+    const beforePath = await captureAndroid("04-play-before");
     const layout = deriveLayoutFromScreenshot(beforePath);
     const candidates = cardDragCandidates(layout);
     const errorsBefore = live.errors.length;
@@ -516,7 +597,7 @@ async function main() {
       throw new Error(`Card drag attempts did not produce phone play_cards. Server errors: ${newErrors.join("; ") || "none"}`);
     }
     await sleep(1100);
-    await captureAndroid("04-play-after");
+    await captureAndroid("05-play-after");
     const afterHandCount = live.game.handCounts[phonePlayerId];
     assertCondition(afterHandCount < beforeHandCount, `Phone hand count did not decrease after play: before ${beforeHandCount}, after ${afterHandCount}`);
     assertCondition(topCardKey(live.game.topCard) !== topCardKey(beforeTopCard), "Phone card drag did not change topCard.");
@@ -536,7 +617,7 @@ async function main() {
 
   await runPenaltyDeckPull();
   if (options.relaunchBeforePlay) {
-    await relaunchPhoneClient("03");
+    await relaunchPhoneClient("04-relaunch");
   } else {
     log("Continuing to phone-side card drag without native activity relaunch");
   }

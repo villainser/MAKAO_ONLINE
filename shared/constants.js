@@ -72,7 +72,7 @@ export const ROOM_LIMITS = {
 
 export const TURN_TIME_LIMIT_OPTIONS = [30, 60, 120, 300];
 
-export const MAKAO_DECLARE_GRACE_MS = 2000;
+export const MAKAO_DECLARE_GRACE_MS = 5000;
 export const MAKAO_CATCH_WINDOW_MS = 5000;
 
 export const EVENTS = {
@@ -93,6 +93,7 @@ export const EVENTS = {
   // Game
   START_GAME: "start_game",
   GAME_STATE_UPDATE: "game_state_update",
+  GAME_ACTION: "game_action",
   PLAY_CARDS: "play_cards", // Zamiast play_card, bo można zagrać kilka
   DRAW_CARD: "draw_card",
   ACCEPT_PENALTY: "accept_penalty",

@@ -2021,7 +2021,7 @@
   width: var(--motion-width);
   height: var(--motion-height);
   will-change: transform, opacity, filter;
-  animation: card-motion-play var(--motion-duration) cubic-bezier(0.16, 0.84, 0.26, 1) var(--motion-delay) both;
+  animation: card-motion-play var(--motion-duration) cubic-bezier(0.22, 0.68, 0.24, 1) var(--motion-delay) both;
   filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.46));
 }
 
@@ -2048,7 +2048,7 @@
   width: 100%;
   height: 100%;
   transform-style: preserve-3d;
-  animation: motion-card-flip var(--motion-duration) cubic-bezier(0.2, 0.7, 0.2, 1) var(--motion-delay) both;
+  animation: motion-card-flip var(--motion-duration) cubic-bezier(0.22, 0.68, 0.24, 1) var(--motion-delay) both;
 }
 
 .motion-card-face {
@@ -2077,45 +2077,53 @@
 
 @keyframes card-motion-play {
   0% {
-    opacity: 0;
-    transform: translate3d(var(--motion-from-x), var(--motion-from-y), 0) rotate(var(--motion-start-rotate)) scale(0.94);
+    opacity: 0.2;
+    transform: translate3d(var(--motion-from-x), var(--motion-from-y), 0) rotate(var(--motion-start-rotate)) scale(0.96);
   }
-  8% {
+  12% {
     opacity: 1;
   }
-  58% {
+  60% {
     opacity: 1;
-    transform: translate3d(var(--motion-mid-x), var(--motion-mid-y), 0) rotate(var(--motion-mid-rotate)) scale(1.08);
+    transform: translate3d(var(--motion-mid-x), var(--motion-mid-y), 0) rotate(var(--motion-mid-rotate)) scale(1.06);
   }
-  88% {
+  86% {
     opacity: 1;
-    transform: translate3d(var(--motion-to-x), var(--motion-to-y), 0) rotate(var(--motion-end-rotate)) scale(0.98);
+    transform: translate3d(var(--motion-to-x), var(--motion-to-y), 0) rotate(var(--motion-end-rotate)) scale(0.985);
+  }
+  94% {
+    opacity: 1;
+    transform: translate3d(var(--motion-to-x), var(--motion-to-y), 0) rotate(var(--motion-end-rotate)) scale(1.015);
   }
   100% {
     opacity: 0;
-    transform: translate3d(var(--motion-to-x), var(--motion-to-y), 0) rotate(var(--motion-end-rotate)) scale(0.86);
+    transform: translate3d(var(--motion-to-x), var(--motion-to-y), 0) rotate(var(--motion-end-rotate)) scale(1);
   }
 }
 
 @keyframes card-motion-draw {
   0% {
-    opacity: 0;
-    transform: translate3d(var(--motion-from-x), var(--motion-from-y), 0) rotate(var(--motion-start-rotate)) scale(0.72);
+    opacity: 0.18;
+    transform: translate3d(var(--motion-from-x), var(--motion-from-y), 0) rotate(var(--motion-start-rotate)) scale(0.78);
   }
-  10% {
+  12% {
     opacity: 1;
   }
-  54% {
+  58% {
     opacity: 1;
-    transform: translate3d(var(--motion-mid-x), var(--motion-mid-y), 0) rotate(var(--motion-mid-rotate)) scale(0.96);
+    transform: translate3d(var(--motion-mid-x), var(--motion-mid-y), 0) rotate(var(--motion-mid-rotate)) scale(1);
   }
-  92% {
+  88% {
     opacity: 1;
-    transform: translate3d(var(--motion-to-x), var(--motion-to-y), 0) rotate(var(--motion-end-rotate)) scale(0.9);
+    transform: translate3d(var(--motion-to-x), var(--motion-to-y), 0) rotate(var(--motion-end-rotate)) scale(0.97);
+  }
+  96% {
+    opacity: 1;
+    transform: translate3d(var(--motion-to-x), var(--motion-to-y), 0) rotate(var(--motion-end-rotate)) scale(1.01);
   }
   100% {
     opacity: 0;
-    transform: translate3d(var(--motion-to-x), var(--motion-to-y), 0) rotate(var(--motion-end-rotate)) scale(0.78);
+    transform: translate3d(var(--motion-to-x), var(--motion-to-y), 0) rotate(var(--motion-end-rotate)) scale(1);
   }
 }
 
@@ -2515,6 +2523,7 @@
 }
 
 .native-table-overlay-menu-button,
+.native-table-overlay-refresh,
 .native-table-overlay-danger,
 .native-table-overlay-secondary {
   min-height: 46px;
@@ -2536,6 +2545,15 @@
   min-width: 72px;
   background: rgba(15, 23, 42, 0.76);
   backdrop-filter: blur(8px);
+}
+
+.native-table-overlay-refresh {
+  background: linear-gradient(180deg, rgba(14, 116, 144, 0.98), rgba(21, 94, 117, 0.98));
+}
+
+.native-table-overlay-refresh:disabled {
+  cursor: wait;
+  opacity: 0.68;
 }
 
 .native-table-overlay-menu {
@@ -5026,26 +5044,124 @@
   box-shadow: 0 0 12px rgba(248, 211, 107, 0.55);
 }
 
-.home-start-screen .home-card {
+.home-card-stage {
   position: relative;
   z-index: 3;
+  isolation: isolate;
+  width: min(100%, 430px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: min(371px, calc(100dvh - 40px));
+}
+
+.home-start-screen .home-card {
+  position: relative;
+  z-index: 1;
   top: auto;
   right: auto;
-  width: min(100%, 430px);
+  width: min(100%, 332px);
   max-height: calc(100dvh - 28px);
   display: grid;
   gap: 10px;
   margin: 0;
   padding: 14px;
   transform: none;
-  border: 1px solid rgba(242, 193, 78, 0.22);
+  isolation: isolate;
+  border: 0;
   border-radius: 18px;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+.home-card-surface {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border: 1px solid rgba(242, 193, 78, 0.22);
+  border-radius: inherit;
   background:
     linear-gradient(180deg, rgba(18, 26, 42, 0.34), rgba(8, 13, 22, 0.42)),
     rgba(10, 16, 28, 0.18);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 18px 38px rgba(0, 0, 0, 0.24);
-  backdrop-filter: blur(2px) saturate(1.06);
-  overflow: hidden;
+  pointer-events: none;
+}
+
+.home-menu-tabs,
+.home-card-body {
+  position: relative;
+  z-index: 3;
+}
+
+.home-start-screen .home-card-settings {
+  width: min(100%, 366px);
+}
+
+.home-start-screen .home-card-join {
+  width: min(100%, 400px);
+}
+
+.home-start-screen .home-card::-webkit-scrollbar {
+  width: 0;
+  display: none;
+}
+
+/* Panel "Dołącz" ma więcej treści niż "Nowa gra" — zwężamy, by zmieścił się na ekranie bez scrolla. */
+.home-start-screen .home-card-join {
+  gap: 8px;
+  padding: 12px;
+}
+
+.home-start-screen .home-card-join .home-entry-panel {
+  gap: 8px;
+}
+
+.home-start-screen .home-card-join .room-code-slot {
+  min-height: 44px;
+}
+
+.home-start-screen .home-card-join .home-invite-textarea {
+  min-height: 44px;
+  max-height: 56px;
+  padding: 7px 10px;
+}
+
+.home-start-screen .home-card-join .home-invite-panel {
+  min-height: 34px;
+  padding: 7px 10px;
+}
+
+.home-invite-feedback {
+  min-height: 16px;
+  margin: -2px 2px 0;
+  color: #f8d36b;
+  font-size: 0.68rem;
+  font-weight: 850;
+  line-height: 1.15;
+}
+
+.home-start-screen .home-card-join .home-code-value {
+  min-height: 44px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.home-start-screen .home-card-join .home-code-value:focus-visible {
+  border-radius: 11px;
+  outline: 2px solid #f8d36b;
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.home-start-screen .home-card-join .home-code-value .room-code-slots {
+  width: 100%;
 }
 
 .home-start-head {
@@ -5074,13 +5190,13 @@
   gap: 6px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
-  padding: 5px;
+  padding: 1px;
   background: rgba(3, 9, 14, 0.26);
 }
 
 .home-menu-button {
   min-width: 0;
-  min-height: 36px;
+  min-height: 44px;
   border: 0;
   border-radius: 999px;
   padding: 0 8px;
@@ -5092,6 +5208,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.home-menu-button:focus-visible {
+  outline: 2px solid #f8d36b;
+  outline-offset: 2px;
 }
 
 .home-menu-active {
@@ -5114,6 +5235,90 @@
 .home-start-screen .server-actions .btn {
   min-height: 48px;
   border-radius: 999px;
+}
+
+.home-invite-textarea {
+  width: 100%;
+  min-height: 54px;
+  max-height: 82px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(3, 10, 20, 0.34);
+  color: #f8fafc;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.25;
+  outline: none;
+  resize: none;
+  touch-action: manipulation;
+}
+
+.home-invite-textarea::placeholder {
+  color: rgba(248, 250, 252, 0.44);
+}
+
+.home-invite-textarea:focus {
+  border-color: rgba(103, 232, 165, 0.45);
+  box-shadow: 0 0 0 3px rgba(103, 232, 165, 0.12);
+}
+
+.home-invite-panel {
+  min-height: 44px;
+  display: grid;
+  gap: 3px;
+  align-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 9px 12px;
+  background: rgba(3, 10, 20, 0.26);
+  color: rgba(248, 250, 252, 0.62);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.home-invite-panel-active {
+  border-color: rgba(103, 232, 165, 0.34);
+  background: rgba(20, 83, 45, 0.18);
+  color: #dff8ea;
+}
+
+.home-invite-panel strong,
+.home-invite-panel span,
+.home-invite-panel small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-invite-panel strong {
+  color: #f8fafc;
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.home-invite-panel small {
+  color: rgba(238, 245, 242, 0.62);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.home-join-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(88px, 0.36fr);
+  gap: 8px;
+}
+
+.home-join-actions .btn {
+  min-width: 0;
+}
+
+.home-clipboard-action {
+  min-height: 48px;
+  border-radius: 999px;
+  padding-inline: 12px;
 }
 
 .home-settings-page .server-panel {
@@ -5194,6 +5399,31 @@
   min-height: 38px;
 }
 
+.home-mode-content {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.home-card-body {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.home-card-breathing-room {
+  min-height: 12px;
+  pointer-events: none;
+}
+
+.home-card-join .home-mode-content {
+  gap: 8px;
+}
+
+.home-card-settings .home-mode-content {
+  gap: 6px;
+}
+
 @media (orientation: landscape) {
   .home-start-screen {
     grid-template-columns: minmax(168px, 0.58fr) minmax(310px, 0.76fr);
@@ -5222,10 +5452,17 @@
   }
 
   .home-start-screen .home-card {
-    justify-self: start;
-    width: min(100%, 400px);
+    max-height: 100%;
     padding: 10px;
     gap: 7px;
+  }
+
+  .home-card-stage {
+    width: min(100%, 400px);
+    height: min(371px, calc(100dvh - 40px));
+    align-self: center;
+    justify-self: start;
+    justify-content: center;
   }
 
   .home-menu-button {
@@ -5234,17 +5471,25 @@
   }
 
   .home-start-screen .home-value-button {
-    min-height: 40px;
+    min-height: 44px;
   }
 
   .home-start-screen .home-primary-action,
-  .home-start-screen .server-actions .btn {
-    min-height: 42px;
+  .home-start-screen .server-actions .btn,
+  .home-clipboard-action {
+    min-height: 44px;
+  }
+
+  .home-invite-textarea {
+    min-height: 44px;
+    max-height: 62px;
+    padding: 7px 10px;
+    font-size: 0.72rem;
   }
 
   .home-start-screen .home-card-settings {
     gap: 6px;
-    padding: 8px 10px;
+    padding: 10px 10px 8px;
   }
 
   .home-card-settings .home-start-head {
@@ -5252,12 +5497,12 @@
   }
 
   .home-card-settings .home-menu-tabs {
-    min-height: 42px;
-    padding: 4px;
+    min-height: 48px;
+    padding: 1px;
   }
 
   .home-card-settings .home-menu-button {
-    min-height: 32px;
+    min-height: 44px;
   }
 
   .home-card-settings .home-field {
@@ -5269,7 +5514,7 @@
   }
 
   .home-card-settings .home-value-button {
-    min-height: 36px;
+    min-height: 44px;
   }
 
   .home-card-settings .home-setting-toggles {
@@ -5277,7 +5522,7 @@
   }
 
   .home-card-settings .home-setting-toggle {
-    min-height: 42px;
+    min-height: 44px;
     gap: 0;
     padding: 5px 8px;
   }
@@ -5303,7 +5548,7 @@
   }
 
   .home-card-settings .server-actions .btn {
-    min-height: 36px;
+    min-height: 44px;
   }
 
   .home-input-panel {
@@ -5362,6 +5607,10 @@
   }
 
   .home-start-screen .home-card {
+    width: 100%;
+  }
+
+  .home-card-stage {
     width: 100%;
   }
 
@@ -6197,10 +6446,21 @@
   }
 }
 
-@keyframes home-panel-swap {
+@keyframes home-panel-swap-forward {
   0% {
     opacity: 0;
-    transform: translate3d(10px, 0, 0);
+    transform: translate3d(0, 7px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes home-panel-swap-backward {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -5px, 0);
   }
   100% {
     opacity: 1;
@@ -6279,14 +6539,17 @@
 }
 
 .home-start-screen .home-card {
-  animation: home-panel-rise 620ms cubic-bezier(0.18, 0.86, 0.26, 1) 170ms both;
+  animation: none;
 }
 
-.home-entry-panel {
-  animation: home-panel-swap 180ms ease-out both;
+.home-mode-content[data-entry-direction="forward"] {
+  animation: none;
 }
 
-.home-menu-button,
+.home-mode-content[data-entry-direction="backward"] {
+  animation: none;
+}
+
 .home-value-button,
 .home-setting-toggle,
 .game-key,
@@ -6294,11 +6557,19 @@
   transition: transform 130ms ease, border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease, color 150ms ease;
 }
 
+.home-menu-button {
+  transition: none;
+}
+
 .home-menu-button:active,
 .home-value-button:active,
 .home-setting-toggle:active,
 .game-key:active {
   transform: translateY(1px) scale(0.985);
+}
+
+.home-menu-button:active {
+  transform: translateY(1px);
 }
 
 .home-menu-active {
@@ -7251,11 +7522,13 @@
   .home-hero-deck span,
   .home-start-status,
   .home-start-status-dot,
+  .home-start-screen .home-floating-card,
   .home-start-screen .home-card,
-  .home-entry-panel,
+  .home-mode-content,
   .home-input-backdrop,
   .home-input-panel,
   .lobby-table-oval,
+  .lobby-table-waiting .lobby-table-count,
   .lobby-seat,
   .lobby-seat-ready,
   .lobby-action-dock > .btn,
@@ -7272,6 +7545,13 @@
   .sort-mode-option,
   .table-banner,
   .table-hint,
+  .opponent-active,
+  .flag-makao,
+  .playing-card-legal,
+  .playing-card-legal.playing-card-with-art::before,
+  .playing-card-selected.playing-card-with-art::before,
+  .hand-group-selected .hand-group-card-with-art::before,
+  .phone-rotate-icon svg,
   .selection-preview,
   .game-over-actions,
   .turn-events div,
@@ -7280,6 +7560,7 @@
   }
 
   .home-menu-button,
+  .home-start-screen .home-card,
   .home-value-button,
   .home-setting-toggle,
   .game-key,

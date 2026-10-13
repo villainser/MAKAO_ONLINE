@@ -82,6 +82,55 @@ test("single 4 automatically skips the next player if they cannot answer", () =>
   assert.equal(state.turnEvents.at(-1).currentPlayerId, "p3");
 });
 
+test("single 4 waits for the next player with an undecided joker", () => {
+  const state = baseState();
+  state.hands.p2 = [card("p2_joker", "joker")];
+  state.hands.p3 = [card("p3_4_clubs", "4", "clubs")];
+
+  GameEngine.processPlayCards(state, "p1", { cardIds: ["p1_4_hearts"] });
+  GameEngine.processAutomaticDraws(state);
+
+  assert.equal(state.activeEffect.type, EFFECT_TYPES.SKIP_TURN);
+  assert.equal(state.activeEffect.targetPlayerId, "p2");
+  assert.equal(state.turnOrder[state.currentPlayerIndex], "p2");
+  assert.deepEqual(state.hands.p2.map(c => c.cardInstanceId), ["p2_joker"]);
+  assert.equal(state.hands.p2[0].jokerDeclaration, undefined);
+  assert.equal(state.skipTurns.p2, undefined);
+
+  GameEngine.processAcceptSkip(state, "p2");
+
+  assert.equal(state.activeEffect, null);
+  assert.equal(state.turnOrder[state.currentPlayerIndex], "p3");
+  assert.deepEqual(state.hands.p2.map(c => c.cardInstanceId), ["p2_joker"]);
+});
+
+test("automatic skip resolver also waits for an undecided joker", () => {
+  const state = baseState();
+  state.hands.p2 = [card("p2_joker", "joker"), card("p2_8_spades", "8", "spades")];
+
+  GameEngine.processPlayCards(state, "p1", { cardIds: ["p1_4_hearts"] });
+  GameEngine.processAutomaticSkipEffects(state);
+
+  assert.equal(state.activeEffect.type, EFFECT_TYPES.SKIP_TURN);
+  assert.equal(state.activeEffect.targetPlayerId, "p2");
+  assert.equal(state.turnOrder[state.currentPlayerIndex], "p2");
+  assert.equal(state.topCard.cardInstanceId, "p1_4_hearts");
+  assert.equal(state.hands.p2[0].jokerDeclaration, undefined);
+
+  GameEngine.processPlayCards(state, "p2", {
+    cardIds: ["p2_joker"],
+    jokerDeclarations: {
+      p2_joker: { rank: "4", suit: "clubs" }
+    }
+  });
+
+  assert.equal(state.topCard.cardInstanceId, "p2_joker");
+  assert.deepEqual(state.topCard.jokerDeclaration, { rank: "4", suit: "clubs" });
+  assert.equal(state.activeEffect.type, EFFECT_TYPES.SKIP_TURN);
+  assert.equal(state.activeEffect.amount, 2);
+  assert.equal(state.activeEffect.targetPlayerId, "p3");
+});
+
 test("multiple 4s store only the skipped turns still waiting after the current skip", () => {
   const state = baseState();
   state.hands.p2 = [card("p2_8_spades", "8", "spades")];
@@ -147,6 +196,125 @@ test("single multi-card move after four 4s consumes only one stored pause", () =
   assert.equal(skipEvents.length, 1);
   assert.equal(skipEvents[0].pausedPlayerId, "p2");
   assert.equal(skipEvents[0].remaining, 2);
+});
+
+test("battle cards do not create draw penalties while their target still has stored pauses", () => {
+  const state = {
+    topCard: card("top_4_hearts", "4", "hearts"),
+    activeEffect: null,
+    currentPlayerIndex: 0,
+    turnOrder: ["p1", "p2"],
+    hands: {
+      p1: [card("p1_3_hearts", "3", "hearts"), card("p1_8_clubs", "8", "clubs")],
+      p2: [card("p2_9_clubs", "9", "clubs"), card("p2_10_hearts", "10", "hearts")]
+    },
+    drawPile: [card("draw_5_spades", "5", "spades"), card("draw_6_spades", "6", "spades")],
+    discardPile: [],
+    direction: 1,
+    skipTurns: { p2: 3 },
+    gameOver: false,
+    settings: { queenVariant: "defensive_non_functional" }
+  };
+
+  GameEngine.processPlayCards(state, "p1", { cardIds: ["p1_3_hearts"] });
+
+  assert.equal(state.topCard.cardInstanceId, "p1_3_hearts");
+  assert.equal(state.activeEffect, null);
+  assert.equal(state.skipTurns.p2, 2);
+  assert.equal(state.turnOrder[state.currentPlayerIndex], "p1");
+  assert.deepEqual(state.hands.p2.map(c => c.cardInstanceId), ["p2_9_clubs", "p2_10_hearts"]);
+  const skipEvents = state.turnEvents.filter(event => event.type === "skip_used" || event.type === "skip_finished");
+  assert.equal(skipEvents.length, 1);
+  assert.equal(skipEvents[0].pausedPlayerId, "p2");
+  assert.equal(skipEvents[0].remaining, 2);
+});
+
+test("ace request keeps priority over a player with stored pauses", () => {
+  const state = baseState();
+  state.turnOrder = ["p1", "p2"];
+  state.currentPlayerIndex = 0;
+  state.topCard = card("top_9_hearts", "9", "hearts");
+  state.hands.p1 = [
+    card("p1_ace_hearts", "ace", "hearts"),
+    card("p1_8_clubs", "8", "clubs")
+  ];
+  state.hands.p2 = [
+    card("p2_5_clubs", "5", "clubs"),
+    card("p2_9_hearts", "9", "hearts")
+  ];
+  state.skipTurns = { p2: 3 };
+
+  GameEngine.processPlayCards(state, "p1", {
+    cardIds: ["p1_ace_hearts"],
+    suitRequest: "clubs"
+  });
+
+  assert.equal(state.activeEffect.type, EFFECT_TYPES.SUIT_REQUEST);
+  assert.equal(state.activeEffect.requestedSuit, "clubs");
+  assert.equal(state.activeEffect.requesterPlayerId, "p1");
+  assert.equal(state.activeEffect.targetPlayerId, "p1");
+  assert.equal(state.skipTurns.p2, 2);
+  assert.equal(state.turnOrder[state.currentPlayerIndex], "p1");
+});
+
+test("jack request skips a player with stored pauses and lets requester continue", () => {
+  const state = baseState();
+  state.turnOrder = ["p1", "p2"];
+  state.currentPlayerIndex = 0;
+  state.topCard = card("top_jack_clubs", "jack", "clubs");
+  state.hands.p1 = [
+    card("p1_jack_hearts", "jack", "hearts"),
+    card("p1_jack_diamonds", "jack", "diamonds"),
+    card("p1_8_spades", "8", "spades")
+  ];
+  state.hands.p2 = [
+    card("p2_5_clubs", "5", "clubs"),
+    card("p2_9_hearts", "9", "hearts")
+  ];
+  state.skipTurns = { p2: 3 };
+
+  GameEngine.processPlayCards(state, "p1", {
+    cardIds: ["p1_jack_hearts", "p1_jack_diamonds"],
+    rankRequest: "8"
+  });
+
+  assert.equal(state.activeEffect.type, EFFECT_TYPES.RANK_REQUEST);
+  assert.equal(state.activeEffect.requestedRank, "8");
+  assert.equal(state.activeEffect.requesterPlayerId, "p1");
+  assert.equal(state.activeEffect.targetPlayerId, "p1");
+  assert.equal(state.turnOrder[state.currentPlayerIndex], "p1");
+  assert.equal(state.skipTurns.p2, 2);
+  assert.deepEqual(state.hands.p1.map(c => c.cardInstanceId), ["p1_8_spades"]);
+  assert.equal(state.makao.p1.declared, false);
+  assert.ok(state.turnEvents.some(event => event.type === "skip_used" && event.pausedPlayerId === "p2"));
+
+  GameEngine.processDeclareMakao(state, "p1");
+  GameEngine.processPlayCards(state, "p1", { cardIds: ["p1_8_spades"] });
+
+  assert.equal(state.gameOver, true);
+  assert.equal(state.winnerId, "p1");
+});
+
+test("ace and jack requests pass over paused players before reaching the next active player", () => {
+  const state = baseState();
+  state.turnOrder = ["p1", "p2", "p3"];
+  state.currentPlayerIndex = 0;
+  state.topCard = card("top_jack_clubs", "jack", "clubs");
+  state.hands.p1 = [card("p1_jack_hearts", "jack", "hearts"), card("p1_8_spades", "8", "spades")];
+  state.hands.p2 = [card("p2_5_clubs", "5", "clubs")];
+  state.hands.p3 = [card("p3_8_diamonds", "8", "diamonds")];
+  state.skipTurns = { p2: 2 };
+
+  GameEngine.processPlayCards(state, "p1", {
+    cardIds: ["p1_jack_hearts"],
+    rankRequest: "8"
+  });
+
+  assert.equal(state.activeEffect.type, EFFECT_TYPES.RANK_REQUEST);
+  assert.equal(state.activeEffect.targetPlayerId, "p3");
+  assert.equal(state.turnOrder[state.currentPlayerIndex], "p3");
+  assert.equal(state.skipTurns.p2, 1);
+  assert.ok(state.turnEvents.some(event => event.type === "skip_used" && event.pausedPlayerId === "p2"));
 });
 
 test("answering a 4 stacks the pause onto the next player", () => {
@@ -222,7 +390,7 @@ test("king clubs and king diamonds do not create a battle penalty", () => {
   assert.equal(state.turnOrder[state.currentPlayerIndex], "p2");
 });
 
-test("remaining stacked pause does not skip a player who must answer a new draw penalty", () => {
+test("remaining stacked pause suppresses a new draw penalty for the paused player", () => {
   const state = baseState();
   state.turnOrder = ["basia", "midzio"];
   state.currentPlayerIndex = 0;
@@ -236,10 +404,11 @@ test("remaining stacked pause does not skip a player who must answer a new draw 
     cardIds: ["basia_king_hearts"]
   });
 
-  assert.equal(state.activeEffect.type, EFFECT_TYPES.DRAW_PENALTY);
-  assert.equal(state.activeEffect.targetPlayerId, "midzio");
-  assert.equal(state.turnOrder[state.currentPlayerIndex], "midzio");
-  assert.equal(state.skipTurns.midzio, 1);
+  assert.equal(state.activeEffect, null);
+  assert.equal(state.turnOrder[state.currentPlayerIndex], "basia");
+  assert.equal(state.skipTurns.midzio, 0);
+  assert.equal(state.turnEvents.at(-1).type, "skip_finished");
+  assert.equal(state.turnEvents.at(-1).pausedPlayerId, "midzio");
 });
 
 test("battle king penalty can be answered by 2 or 3 in the battle suit", () => {
@@ -398,7 +567,7 @@ test("strict battle variant rejects same-rank 2 or 3 outside the battle suit", (
   assert.equal(state.topCard.cardInstanceId, "top_2_hearts");
 });
 
-test("strict battle variant rejects mixed-suit same-rank battle batches", () => {
+test("strict battle variant checks the anchor suit but allows same-rank battle extensions", () => {
   const state = baseState();
   state.turnOrder = ["p1", "p2"];
   state.currentPlayerIndex = 0;
@@ -416,10 +585,105 @@ test("strict battle variant rejects mixed-suit same-rank battle batches", () => 
     card("p1_9_clubs", "9", "clubs")
   ];
 
-  assert.throws(
-    () => GameEngine.processPlayCards(state, "p1", { cardIds: ["p1_2_hearts", "p1_2_spades"] }),
-    /active penalty rules/
-  );
+  GameEngine.processPlayCards(state, "p1", {
+    cardIds: ["p1_2_hearts", "p1_2_spades"]
+  });
+
+  assert.equal(state.activeEffect.type, EFFECT_TYPES.DRAW_PENALTY);
+  assert.equal(state.activeEffect.amount, 6);
+  assert.equal(state.activeEffect.battleSuit, "spades");
+  assert.equal(state.activeEffect.targetPlayerId, "p2");
+  assert.equal(state.topCard.cardInstanceId, "p1_2_spades");
+});
+
+test("battle multi accepts a legal 3 anchor followed by same-rank cards of any suit", () => {
+  const state = baseState();
+  state.turnOrder = ["p1", "p2"];
+  state.currentPlayerIndex = 0;
+  state.topCard = card("top_2_hearts", "2", "hearts");
+  state.activeEffect = {
+    type: EFFECT_TYPES.DRAW_PENALTY,
+    amount: 2,
+    battleSuit: "hearts",
+    direction: "next",
+    targetPlayerId: "p1"
+  };
+  state.hands.p1 = [
+    card("p1_3_hearts", "3", "hearts"),
+    card("p1_3_clubs", "3", "clubs"),
+    card("p1_9_spades", "9", "spades")
+  ];
+
+  GameEngine.processPlayCards(state, "p1", {
+    cardIds: ["p1_3_hearts", "p1_3_clubs"]
+  });
+
+  assert.equal(state.activeEffect.type, EFFECT_TYPES.DRAW_PENALTY);
+  assert.equal(state.activeEffect.amount, 8);
+  assert.equal(state.activeEffect.battleSuit, "clubs");
+  assert.equal(state.activeEffect.direction, "next");
+  assert.equal(state.activeEffect.targetPlayerId, "p2");
+  assert.equal(state.topCard.cardInstanceId, "p1_3_clubs");
+  assert.equal(state.discardPile.at(-1).cardInstanceId, "p1_3_hearts");
+});
+
+test("battle multi auto-anchors a later legal card when the submitted first card cannot anchor", () => {
+  const state = baseState();
+  state.turnOrder = ["p1", "p2"];
+  state.currentPlayerIndex = 0;
+  state.topCard = card("top_2_hearts", "2", "hearts");
+  state.activeEffect = {
+    type: EFFECT_TYPES.DRAW_PENALTY,
+    amount: 2,
+    battleSuit: "hearts",
+    direction: "next",
+    targetPlayerId: "p1"
+  };
+  state.hands.p1 = [
+    card("p1_3_clubs", "3", "clubs"),
+    card("p1_3_hearts", "3", "hearts"),
+    card("p1_9_spades", "9", "spades")
+  ];
+
+  GameEngine.processPlayCards(state, "p1", {
+    cardIds: ["p1_3_clubs", "p1_3_hearts"]
+  });
+
+  assert.equal(state.activeEffect.amount, 8);
+  assert.equal(state.activeEffect.battleSuit, "clubs");
+  assert.equal(state.topCard.cardInstanceId, "p1_3_clubs");
+  assert.equal(state.discardPile.at(-1).cardInstanceId, "p1_3_hearts");
+  assert.deepEqual(state.hands.p1.map(c => c.cardInstanceId), ["p1_9_spades"]);
+});
+
+test("battle multi can auto-promote a later battle king and only actual battle kings add penalty", () => {
+  const state = baseState();
+  state.turnOrder = ["p1", "p2"];
+  state.currentPlayerIndex = 0;
+  state.topCard = card("top_king_spades", "king", "spades");
+  state.activeEffect = {
+    type: EFFECT_TYPES.DRAW_PENALTY,
+    amount: 5,
+    battleSuit: "spades",
+    direction: "next",
+    targetPlayerId: "p1"
+  };
+  state.hands.p1 = [
+    card("p1_king_clubs", "king", "clubs"),
+    card("p1_king_hearts", "king", "hearts"),
+    card("p1_9_spades", "9", "spades")
+  ];
+
+  GameEngine.processPlayCards(state, "p1", {
+    cardIds: ["p1_king_clubs", "p1_king_hearts"]
+  });
+
+  assert.equal(state.activeEffect.amount, 10);
+  assert.equal(state.activeEffect.battleSuit, "hearts");
+  assert.equal(state.activeEffect.direction, "next");
+  assert.equal(state.activeEffect.targetPlayerId, "p2");
+  assert.equal(state.topCard.cardInstanceId, "p1_king_clubs");
+  assert.equal(state.discardPile.at(-1).cardInstanceId, "p1_king_hearts");
 });
 
 test("only the active draw-penalty target can counter the battle", () => {
@@ -600,6 +864,38 @@ test("king hearts can answer king spades plus king clubs batch by rank", () => {
   assert.equal(state.topCard.cardInstanceId, "p2_king_hearts");
 });
 
+test("king spades can answer active king hearts battle with non-battle kings in the same batch", () => {
+  const state = baseState();
+  state.turnOrder = ["p1", "p2"];
+  state.currentPlayerIndex = 0;
+  state.topCard = card("top_king_hearts", "king", "hearts");
+  state.activeEffect = {
+    type: EFFECT_TYPES.DRAW_PENALTY,
+    amount: 5,
+    battleSuit: "hearts",
+    direction: "next",
+    targetPlayerId: "p1"
+  };
+  state.hands.p1 = [
+    card("p1_king_spades", "king", "spades"),
+    card("p1_king_clubs", "king", "clubs"),
+    card("p1_king_diamonds", "king", "diamonds"),
+    card("p1_8_hearts", "8", "hearts")
+  ];
+
+  GameEngine.processPlayCards(state, "p1", {
+    cardIds: ["p1_king_spades", "p1_king_clubs", "p1_king_diamonds"]
+  });
+
+  assert.equal(state.activeEffect.type, EFFECT_TYPES.DRAW_PENALTY);
+  assert.equal(state.activeEffect.amount, 10);
+  assert.equal(state.activeEffect.battleSuit, "spades");
+  assert.equal(state.activeEffect.direction, "next");
+  assert.equal(state.activeEffect.targetPlayerId, "p2");
+  assert.equal(state.topCard.cardInstanceId, "p1_king_diamonds");
+  assert.deepEqual(state.hands.p1.map(c => c.cardInstanceId), ["p1_8_hearts"]);
+});
+
 test("strict battle variant rejects opposite-suit king counter by rank", () => {
   const state = baseState();
   state.turnOrder = ["p1", "p2"];
@@ -624,6 +920,37 @@ test("strict battle variant rejects opposite-suit king counter by rank", () => {
   assert.equal(state.activeEffect.amount, 5);
   assert.equal(state.activeEffect.battleSuit, "spades");
   assert.equal(state.activeEffect.targetPlayerId, "p2");
+});
+
+test("strict battle variant rejects king spades plus non-battle kings on active king hearts battle", () => {
+  const state = baseState();
+  state.turnOrder = ["p1", "p2"];
+  state.currentPlayerIndex = 0;
+  state.topCard = card("top_king_hearts", "king", "hearts");
+  state.settings.battleCounterMode = BATTLE_COUNTER_MODES.SUIT_ONLY;
+  state.activeEffect = {
+    type: EFFECT_TYPES.DRAW_PENALTY,
+    amount: 5,
+    battleSuit: "hearts",
+    direction: "next",
+    targetPlayerId: "p1"
+  };
+  state.hands.p1 = [
+    card("p1_king_spades", "king", "spades"),
+    card("p1_king_clubs", "king", "clubs"),
+    card("p1_king_diamonds", "king", "diamonds")
+  ];
+
+  assert.throws(
+    () => GameEngine.processPlayCards(state, "p1", {
+      cardIds: ["p1_king_spades", "p1_king_clubs", "p1_king_diamonds"]
+    }),
+    /current top card/
+  );
+
+  assert.equal(state.activeEffect.amount, 5);
+  assert.equal(state.activeEffect.battleSuit, "hearts");
+  assert.equal(state.topCard.cardInstanceId, "top_king_hearts");
 });
 
 test("king spades targets the opponent in a two-player game", () => {
@@ -829,6 +1156,32 @@ test("queen cancels a jack rank request", () => {
   assert.equal(state.topCard.cardInstanceId, "p1_queen_diamonds");
 });
 
+test("multiple queens can finish while cancelling a jack rank request after Makao is armed", () => {
+  const state = baseState();
+  state.turnOrder = ["p1", "p2"];
+  state.currentPlayerIndex = 0;
+  state.topCard = card("top_jack_diamonds", "jack", "diamonds");
+  state.activeEffect = {
+    type: EFFECT_TYPES.RANK_REQUEST,
+    requestedRank: "10",
+    targetPlayerId: "p1"
+  };
+  state.hands.p1 = [
+    card("p1_queen_diamonds", "queen", "diamonds"),
+    card("p1_queen_spades", "queen", "spades")
+  ];
+  state.hands.p2 = [card("p2_8_hearts", "8", "hearts")];
+
+  GameEngine.processDeclareMakao(state, "p1");
+  GameEngine.processPlayCards(state, "p1", {
+    cardIds: ["p1_queen_diamonds", "p1_queen_spades"]
+  });
+
+  assert.equal(state.activeEffect, null);
+  assert.equal(state.gameOver, true);
+  assert.equal(state.winnerId, "p1");
+});
+
 test("queen cannot cancel active ace or jack requests when the room variant blocks it", () => {
   const state = baseState();
   state.turnOrder = ["p1", "p2"];
@@ -951,26 +1304,33 @@ test("player can declare Makao after playing down to one card", () => {
   assert.equal(state.makao.p1.declared, true);
 });
 
-test("player can arm Makao before playing the last two or more cards", () => {
-  const state = baseState();
-  state.topCard = card("top_8_clubs", "8", "clubs");
-  state.hands.p1 = [
-    card("p1_8_hearts", "8", "hearts"),
-    card("p1_8_diamonds", "8", "diamonds")
-  ];
+test("player can arm Makao before playing two through six final same-rank cards", () => {
+  const suits = ["hearts", "diamonds", "clubs", "spades"];
 
-  GameEngine.processDeclareMakao(state, "p1");
+  for (const count of [2, 3, 4, 5, 6]) {
+    const state = baseState();
+    state.topCard = card(`top_8_clubs_${count}`, "8", "clubs");
+    state.hands.p1 = Array.from({ length: count }, (_, index) => (
+      card(`p1_${count}_8_${index}`, "8", suits[index % suits.length])
+    ));
 
-  assert.equal(state.makao.p1.armed, true);
-  assert.equal(GameEngine.hasDeclaredMakao(state, "p1"), true);
+    GameEngine.processDeclareMakao(state, "p1");
 
-  GameEngine.processPlayCards(state, "p1", {
-    cardIds: ["p1_8_hearts", "p1_8_diamonds"]
-  });
+    assert.equal(state.makao.p1.armed, true, `armed for ${count}`);
+    assert.equal(GameEngine.hasDeclaredMakao(state, "p1"), true, `declared for ${count}`);
 
-  assert.equal(state.hands.p1.length, 0);
-  assert.equal(state.finishedPlayers.at(-1).playerId, "p1");
-  assert.equal(state.turnEvents.some(event => event.type === "makao_finish_penalty"), false);
+    GameEngine.processPlayCards(state, "p1", {
+      cardIds: state.hands.p1.map(card => card.cardInstanceId)
+    });
+
+    assert.equal(state.hands.p1.length, 0, `empty hand for ${count}`);
+    assert.equal(state.finishedPlayers.at(-1).playerId, "p1", `finished for ${count}`);
+    assert.equal(
+      state.turnEvents.some(event => event.type === "makao_finish_penalty"),
+      false,
+      `no penalty for ${count}`
+    );
+  }
 });
 
 test("player cannot arm Makao before their turn", () => {
@@ -1016,6 +1376,41 @@ test("Makao cannot be caught during the declaration grace window", () => {
     () => GameEngine.processCatchMakao(state, "p2", "p1"),
     /window is not open/
   );
+});
+
+test("expired Makao catch validation is side-effect free", () => {
+  const state = baseState();
+  state.hands.p1 = [card("p1_last_8_hearts", "8", "hearts")];
+  state.makao = { p1: {
+    declared: false,
+    declareUntil: Date.now() - 2000,
+    canBeCaughtAt: Date.now() - 1000,
+    catchUntil: Date.now() - 1
+  } };
+  const before = structuredClone({
+    makao: state.makao,
+    hands: state.hands,
+    turnEvents: state.turnEvents,
+    stateVersion: state.stateVersion,
+    moveHistory: state.moveHistory,
+    auditLog: state.auditLog,
+    stateSnapshots: state.stateSnapshots
+  });
+
+  assert.throws(
+    () => GameEngine.processCatchMakao(state, "p2", "p1"),
+    /window has expired/
+  );
+
+  assert.deepEqual({
+    makao: state.makao,
+    hands: state.hands,
+    turnEvents: state.turnEvents,
+    stateVersion: state.stateVersion,
+    moveHistory: state.moveHistory,
+    auditLog: state.auditLog,
+    stateSnapshots: state.stateSnapshots
+  }, before);
 });
 
 test("player can declare missing Makao during the grace window", () => {
@@ -1093,6 +1488,93 @@ test("removing a player who finished preserves the next current player", () => {
 
   assert.deepEqual(state.turnOrder, ["p2", "p3"]);
   assert.equal(state.turnOrder[state.currentPlayerIndex], "p2");
+});
+
+test("permanently removed player cards stay inactive until the next draw-pile refill", () => {
+  const state = baseState();
+  const originalShuffle = GameEngine.shuffle;
+  const departedJoker = {
+    ...card("departed_joker", "joker"),
+    jokerDeclaration: { rank: "jack", suit: "clubs" }
+  };
+  const collectCardIds = currentState => [
+    ...Object.values(currentState.hands || {}).flat(),
+    ...(currentState.drawPile || []),
+    ...(currentState.discardPile || []),
+    ...(currentState.inactiveDepartedCards || []),
+    currentState.topCard
+  ].filter(Boolean).map(item => item.cardInstanceId).sort();
+
+  state.currentPlayerIndex = 0;
+  state.topCard = card("preserved_top_9_hearts", "9", "hearts");
+  state.hands = {
+    p1: [],
+    p2: [card("departed_8_clubs", "8", "clubs"), departedJoker],
+    p3: [card("p3_10_spades", "10", "spades")]
+  };
+  state.drawPile = [card("existing_draw_5_diamonds", "5", "diamonds")];
+  state.discardPile = [card("discard_6_clubs", "6", "clubs")];
+  state.inactiveDepartedCards = [];
+  const cardIdsBeforeRemoval = collectCardIds(state);
+  GameEngine.shuffle = array => array;
+
+  try {
+    GameEngine.removePlayerFromGame(state, "p2", { eventType: "player_left" });
+
+    assert.deepEqual(state.turnOrder, ["p1", "p3"]);
+    assert.equal(state.hands.p2, undefined);
+    assert.deepEqual(state.inactiveDepartedCards.map(item => item.cardInstanceId), [
+      "departed_8_clubs",
+      "departed_joker"
+    ]);
+    assert.equal(state.topCard.cardInstanceId, "preserved_top_9_hearts");
+    assert.deepEqual(collectCardIds(state), cardIdsBeforeRemoval);
+    assert.deepEqual(
+      GameEngine.getStateSnapshot(state).zones.inactiveDepartedCards,
+      ["departed_8_clubs", "departed_joker"]
+    );
+
+    GameEngine.drawCards(state, "p1", 1);
+
+    assert.deepEqual(state.hands.p1.map(item => item.cardInstanceId), ["existing_draw_5_diamonds"]);
+    assert.deepEqual(state.inactiveDepartedCards.map(item => item.cardInstanceId), [
+      "departed_8_clubs",
+      "departed_joker"
+    ]);
+    assert.deepEqual(state.discardPile.map(item => item.cardInstanceId), ["discard_6_clubs"]);
+
+    GameEngine.drawCards(state, "p1", 1);
+
+    assert.equal(state.topCard.cardInstanceId, "preserved_top_9_hearts");
+    assert.deepEqual(state.inactiveDepartedCards, []);
+    assert.deepEqual(state.discardPile, []);
+    assert.deepEqual(state.hands.p1.at(-1), card("departed_joker", "joker"));
+    assert.deepEqual(state.drawPile.map(item => item.cardInstanceId), [
+      "discard_6_clubs",
+      "departed_8_clubs"
+    ]);
+    assert.deepEqual(collectCardIds(state), cardIdsBeforeRemoval);
+  } finally {
+    GameEngine.shuffle = originalShuffle;
+  }
+});
+
+test("permanent removal in a two-player game ends play without scheduling a future refill", () => {
+  const state = baseState();
+  state.turnOrder = ["p1", "p2"];
+  state.currentPlayerIndex = 0;
+  state.hands = {
+    p1: [card("p1_departing_8_hearts", "8", "hearts")],
+    p2: [card("p2_remaining_9_clubs", "9", "clubs")]
+  };
+  state.inactiveDepartedCards = [];
+
+  GameEngine.removePlayerFromGame(state, "p1", { eventType: "player_left" });
+
+  assert.equal(state.gameOver, true);
+  assert.equal(state.winnerId, "p2");
+  assert.deepEqual(state.turnOrder, ["p2"]);
+  assert.deepEqual(state.inactiveDepartedCards, []);
 });
 
 test("last battle card in a two-player game ends the game and clears active penalty", () => {
@@ -1222,6 +1704,30 @@ test("after drawing, the drawn card can be submitted after same-rank hand cards"
 
   assert.equal(state.topCard.cardInstanceId, "p1_10_diamonds");
   assert.deepEqual(state.hands.p1.map(c => c.cardInstanceId), ["p1_8_hearts"]);
+  assert.equal(state.hasDrawnCardThisTurn, false);
+  assert.equal(state.drawnCardInstanceId, null);
+});
+
+test("after drawing a playable card, player may add same-rank hand card and finish with armed Makao", () => {
+  const state = baseState();
+  state.turnOrder = ["p1", "p2"];
+  state.currentPlayerIndex = 0;
+  state.topCard = card("top_9_clubs", "9", "clubs");
+  state.hands.p1 = [
+    card("p1_10_diamonds", "10", "diamonds"),
+    card("drawn_10_clubs", "10", "clubs")
+  ];
+  state.hands.p2 = [card("p2_8_hearts", "8", "hearts")];
+  state.hasDrawnCardThisTurn = true;
+  state.drawnCardInstanceId = "drawn_10_clubs";
+
+  GameEngine.processDeclareMakao(state, "p1");
+  GameEngine.processPlayCards(state, "p1", {
+    cardIds: ["drawn_10_clubs", "p1_10_diamonds"]
+  });
+
+  assert.equal(state.gameOver, true);
+  assert.equal(state.winnerId, "p1");
   assert.equal(state.hasDrawnCardThisTurn, false);
   assert.equal(state.drawnCardInstanceId, null);
 });
@@ -1657,6 +2163,54 @@ test("drawing again after a playable first penalty card declines the counter win
   assert.equal(state.turnOrder[state.currentPlayerIndex], "p2");
 });
 
+test("passing after a playable first penalty card is side-effect free and remaining cards require separate draws", () => {
+  const state = baseState();
+  state.turnOrder = ["p1", "p2"];
+  state.currentPlayerIndex = 0;
+  state.topCard = card("top_penalty_3_hearts", "3", "hearts");
+  state.activeEffect = {
+    type: EFFECT_TYPES.DRAW_PENALTY,
+    amount: 6,
+    battleSuit: "hearts",
+    targetPlayerId: "p1"
+  };
+  state.hands.p1 = [card("p1_penalty_9_spades", "9", "spades")];
+  state.drawPile = [
+    card("draw_penalty_sixth", "5", "clubs"),
+    card("draw_penalty_fifth", "6", "clubs"),
+    card("draw_penalty_fourth", "7", "clubs"),
+    card("draw_penalty_third", "8", "clubs"),
+    card("draw_penalty_second", "9", "clubs"),
+    card("draw_penalty_first_counter", "3", "hearts")
+  ];
+
+  GameEngine.processDrawCard(state, "p1");
+  assert.equal(state.activeEffect.penaltyDrawnCount, 1);
+  assert.equal(state.hasDrawnCardThisTurn, true);
+  const afterFirstDraw = structuredClone(state);
+
+  assert.throws(
+    () => GameEngine.processPassTurn(state, "p1"),
+    /one at a time/
+  );
+  assert.deepEqual(state, afterFirstDraw);
+
+  for (let drawnCount = 2; drawnCount <= 6; drawnCount += 1) {
+    const handSizeBefore = state.hands.p1.length;
+    GameEngine.processDrawCard(state, "p1");
+    assert.equal(state.hands.p1.length, handSizeBefore + 1, `draw ${drawnCount} adds one card`);
+    if (drawnCount < 6) {
+      assert.equal(state.activeEffect.penaltyDrawnCount, drawnCount);
+      assert.equal(state.turnOrder[state.currentPlayerIndex], "p1");
+    }
+  }
+
+  assert.equal(state.activeEffect, null);
+  assert.equal(state.turnOrder[state.currentPlayerIndex], "p2");
+  assert.equal(state.turnEvents.at(-1).type, "penalty_accepted");
+  assert.equal(state.turnEvents.at(-1).drawnCount, 6);
+});
+
 test("drawing from pile during +3 lets a drawn 3 of another suit counter by rank", () => {
   const state = baseState();
   state.turnOrder = ["p1", "p2"];
@@ -2070,6 +2624,86 @@ test("functional start cards are moved to the bottom privately", () => {
   }
 });
 
+test("initial deal performs a complete redeal when no neutral start card remains", () => {
+  const originalCreateDeck = GameEngine.createDeck;
+  const originalShuffle = GameEngine.shuffle;
+  const functional4 = card("functional_4_hearts", "4", "hearts");
+  const functional2 = card("functional_2_spades", "2", "spades");
+  const functionalJoker = card("functional_joker", "joker");
+  const neutralStart = card("neutral_7_clubs", "7", "clubs");
+  const dealCards = Array.from({ length: 9 }, (_, index) => (
+    card(`deal_${index + 1}`, index % 2 === 0 ? "8" : "9", index % 2 === 0 ? "diamonds" : "clubs")
+  ));
+  const fullDeck = [functional4, functional2, functionalJoker, neutralStart, ...dealCards];
+  const firstLayout = [...fullDeck];
+  const secondLayout = [functional4, functional2, neutralStart, functionalJoker, ...dealCards];
+  let shuffleCalls = 0;
+
+  GameEngine.createDeck = () => [...fullDeck];
+  GameEngine.shuffle = array => {
+    shuffleCalls += 1;
+    const layout = shuffleCalls === 1 ? firstLayout : secondLayout;
+    array.splice(0, array.length, ...layout);
+    return array;
+  };
+
+  try {
+    const state = GameEngine.initializeGame(
+      [{ id: "p1" }, { id: "p2" }],
+      { deckCount: 1, useJokers: true, firstPlayerId: "p1" }
+    );
+    const allCards = collectInitializedCards(state);
+    const allIds = allCards.map(item => item.cardInstanceId);
+
+    assert.equal(shuffleCalls, 2);
+    assert.equal(state.topCard.cardInstanceId, "neutral_7_clubs");
+    assert.equal(Object.values(state.hands).every(hand => hand.length === 5), true);
+    assert.equal(allCards.length, fullDeck.length);
+    assert.equal(new Set(allIds).size, fullDeck.length);
+    assert.deepEqual(new Set(allIds), new Set(fullDeck.map(item => item.cardInstanceId)));
+    assert.deepEqual(state.privateDealLog.skippedFunctionalStartCards, []);
+  } finally {
+    GameEngine.createDeck = originalCreateDeck;
+    GameEngine.shuffle = originalShuffle;
+  }
+});
+
+test("initial deal fails in a controlled way after bounded complete redeals", () => {
+  const originalCreateDeck = GameEngine.createDeck;
+  const originalShuffle = GameEngine.shuffle;
+  const impossibleDeck = [
+    card("only_remaining_4", "4", "hearts"),
+    ...Array.from({ length: 10 }, (_, index) => (
+      card(`dealt_neutral_${index + 1}`, index % 2 === 0 ? "7" : "8", index % 2 === 0 ? "clubs" : "diamonds")
+    ))
+  ];
+  let shuffleCalls = 0;
+
+  GameEngine.createDeck = () => [...impossibleDeck];
+  GameEngine.shuffle = array => {
+    shuffleCalls += 1;
+    return array;
+  };
+
+  try {
+    assert.throws(
+      () => GameEngine.initializeGame(
+        [{ id: "p1" }, { id: "p2" }],
+        { deckCount: 1, useJokers: false, firstPlayerId: "p1" }
+      ),
+      error => {
+        assert.equal(error.code, "NO_NEUTRAL_START_CARD");
+        return /Unable to initialize game.*neutral start card.*complete deal/i.test(error.message);
+      }
+    );
+    assert.ok(shuffleCalls > 1);
+    assert.ok(shuffleCalls < 1000);
+  } finally {
+    GameEngine.createDeck = originalCreateDeck;
+    GameEngine.shuffle = originalShuffle;
+  }
+});
+
 test("three decks with jokers use unique deck-scoped joker ids", () => {
   const cards = [0, 1, 2].flatMap(deckIndex => GameEngine.createDeck(true, deckIndex));
   const ids = cards.map(item => item.cardInstanceId);
@@ -2255,6 +2889,33 @@ test("joker can start a same-rank multi-card play when declared as a legal first
 
   assert.equal(state.topCard.cardInstanceId, "p1_10_clubs");
   assert.deepEqual(state.discardPile.at(-1).jokerDeclaration, { rank: "10", suit: "hearts" });
+});
+
+test("drawn joker can start a final same-rank play with a card from hand after Makao is armed", () => {
+  const state = baseState();
+  state.turnOrder = ["p1", "p2"];
+  state.currentPlayerIndex = 0;
+  state.topCard = card("top_9_clubs", "9", "clubs");
+  state.hands.p1 = [
+    card("drawn_joker", "joker"),
+    card("p1_10_diamonds", "10", "diamonds")
+  ];
+  state.hands.p2 = [card("p2_8_hearts", "8", "hearts")];
+  state.hasDrawnCardThisTurn = true;
+  state.drawnCardInstanceId = "drawn_joker";
+
+  GameEngine.processDeclareMakao(state, "p1");
+  GameEngine.processPlayCards(state, "p1", {
+    cardIds: ["drawn_joker", "p1_10_diamonds"],
+    jokerDeclarations: {
+      drawn_joker: { rank: "10", suit: "clubs" }
+    }
+  });
+
+  assert.equal(state.gameOver, true);
+  assert.equal(state.winnerId, "p1");
+  assert.equal(state.discardPile.at(-1).jokerDeclaration.rank, "10");
+  assert.equal(state.topCard.cardInstanceId, "p1_10_diamonds");
 });
 
 test("joker declared as a battle card stacks a matching active penalty", () => {
@@ -2579,6 +3240,72 @@ test("last jack with no request finishes and leaves the next player on the jack"
   assert.equal(state.turnOrder[state.currentPlayerIndex], "p2");
 });
 
+test("final Jack plus Joker-as-Jack ends a two-player game without applying the request", () => {
+  const state = baseState();
+  state.turnOrder = ["p1", "p2"];
+  state.currentPlayerIndex = 0;
+  state.topCard = card("top_jack_clubs", "jack", "clubs");
+  state.hands = {
+    p1: [card("p1_jack_clubs", "jack", "clubs"), card("p1_joker", "joker")],
+    p2: [card("p2_8_hearts", "8", "hearts")]
+  };
+  state.makao = {};
+
+  GameEngine.processDeclareMakao(state, "p1");
+  assert.equal(GameEngine.hasDeclaredMakao(state, "p1"), true);
+
+  GameEngine.processPlayCards(state, "p1", {
+    cardIds: ["p1_jack_clubs", "p1_joker"],
+    jokerDeclarations: {
+      p1_joker: { rank: "jack", suit: "spades" }
+    },
+    rankRequest: "10"
+  });
+
+  assert.equal(state.gameOver, true);
+  assert.equal(state.winnerId, "p1");
+  assert.equal(state.activeEffect, null);
+  assert.deepEqual(state.turnOrder, ["p2"]);
+  assert.equal(state.topCard.cardInstanceId, "p1_joker");
+  assert.deepEqual(state.topCard.jokerDeclaration, { rank: "jack", suit: "spades" });
+  assert.deepEqual(state.hands.p2.map(item => item.cardInstanceId), ["p2_8_hearts"]);
+});
+
+test("final Jack plus Joker-as-Jack routes its request to a remaining player in a three-player game", () => {
+  const state = baseState();
+  state.turnOrder = ["p1", "p2", "p3"];
+  state.currentPlayerIndex = 0;
+  state.topCard = card("top_jack_clubs", "jack", "clubs");
+  state.hands = {
+    p1: [card("p1_jack_clubs", "jack", "clubs"), card("p1_joker", "joker")],
+    p2: [card("p2_8_hearts", "8", "hearts")],
+    p3: [card("p3_9_diamonds", "9", "diamonds")]
+  };
+  state.makao = {};
+
+  GameEngine.processDeclareMakao(state, "p1");
+  assert.equal(GameEngine.hasDeclaredMakao(state, "p1"), true);
+
+  GameEngine.processPlayCards(state, "p1", {
+    cardIds: ["p1_jack_clubs", "p1_joker"],
+    jokerDeclarations: {
+      p1_joker: { rank: "jack", suit: "spades" }
+    },
+    rankRequest: "10"
+  });
+
+  assert.equal(state.gameOver, false);
+  assert.deepEqual(state.turnOrder, ["p2", "p3"]);
+  assert.equal(state.activeEffect.type, EFFECT_TYPES.RANK_REQUEST);
+  assert.equal(state.activeEffect.requestedRank, "10");
+  assert.equal(state.activeEffect.sourceCardId, "p1_joker");
+  assert.equal(state.activeEffect.requesterPlayerId, "p1");
+  assert.equal(state.activeEffect.targetPlayerId, "p2");
+  assert.equal(state.turnOrder[state.currentPlayerIndex], "p2");
+  assert.equal(state.topCard.cardInstanceId, "p1_joker");
+  assert.deepEqual(state.topCard.jokerDeclaration, { rank: "jack", suit: "spades" });
+});
+
 test("last battle 2 can finish the player and pass the penalty to the next remaining player", () => {
   const state = baseState();
   state.turnOrder = ["p1", "p2", "p3"];
@@ -2791,7 +3518,7 @@ test("declared joker resets to a normal joker when discard pile is reshuffled in
   assert.deepEqual(state.hands.p1, [card("discard_joker", "joker")]);
 });
 
-test("draw penalty continues through an empty draw pile and then selects a neutral table card", () => {
+test("draw penalty continues through an empty draw pile and preserves the table card", () => {
   const state = baseState();
   const originalShuffle = GameEngine.shuffle;
   GameEngine.shuffle = array => array;
@@ -2820,24 +3547,20 @@ test("draw penalty continues through an empty draw pile and then selects a neutr
       "draw_last_5_spades",
       "draw_missing_6_diamonds"
     ]);
-    assert.equal(state.topCard.cardInstanceId, "neutral_7_clubs");
-    assert.deepEqual(state.drawPile.map(c => c.cardInstanceId), ["functional_4_spades"]);
-    assert.deepEqual(state.discardPile.map(c => c.cardInstanceId), ["old_top_9_hearts"]);
+    assert.equal(state.topCard.cardInstanceId, "old_top_9_hearts");
+    assert.deepEqual(state.drawPile.map(c => c.cardInstanceId), ["neutral_7_clubs", "functional_4_spades"]);
+    assert.deepEqual(state.discardPile.map(c => c.cardInstanceId), []);
     assert.equal(state.activeEffect, null);
     assert.equal(state.turnOrder[state.currentPlayerIndex], "p2");
     assert.ok(state.turnEvents.some(event => event.type === "draw_pile_refilled"));
     assert.ok(state.auditLog.some(entry => entry.type === "draw_pile_refilled"));
-    assert.ok(state.auditLog.some(entry => entry.type === "neutral_table_card_selected"));
-    assert.deepEqual(
-      state.auditLog.find(entry => entry.type === "neutral_table_card_selected").details.skippedFunctionalCards,
-      [GameEngine.privateCard(card("functional_4_spades", "4", "spades"))]
-    );
+    assert.equal(state.auditLog.some(entry => entry.type === "neutral_table_card_selected"), false);
   } finally {
     GameEngine.shuffle = originalShuffle;
   }
 });
 
-test("refill without any neutral card preserves the current table card and logs the edge case", () => {
+test("refill without any neutral card preserves the current table card", () => {
   const state = baseState();
   const originalShuffle = GameEngine.shuffle;
   GameEngine.shuffle = array => array;
@@ -2857,10 +3580,54 @@ test("refill without any neutral card preserves the current table card and logs 
     assert.equal(state.topCard.cardInstanceId, "old_top_9_hearts");
     assert.deepEqual(state.drawPile.map(c => c.cardInstanceId), ["functional_4_spades"]);
     assert.equal(state.discardPile.length, 0);
-    assert.ok(state.auditLog.some(entry => entry.type === "neutral_table_card_unavailable"));
+    assert.ok(state.auditLog.some(entry => entry.type === "draw_pile_refilled"));
+    assert.equal(state.auditLog.some(entry => entry.type === "neutral_table_card_unavailable"), false);
   } finally {
     GameEngine.shuffle = originalShuffle;
   }
+});
+
+test("rank request target can draw and pass instead of answering with a held card or joker", () => {
+  const state = baseState();
+  state.turnOrder = ["p1", "p2", "p3"];
+  state.currentPlayerIndex = 1;
+  state.topCard = card("top_jack_hearts", "jack", "hearts");
+  state.activeEffect = {
+    type: EFFECT_TYPES.RANK_REQUEST,
+    requestedRank: "5",
+    sourceCardId: "top_jack_hearts",
+    requesterPlayerId: "p1",
+    targetPlayerId: "p2"
+  };
+  state.hands.p2 = [
+    card("held_5_clubs", "5", "clubs"),
+    card("held_joker", "joker"),
+    card("held_9_spades", "9", "spades")
+  ];
+  state.drawPile = [card("draw_5_diamonds", "5", "diamonds")];
+
+  GameEngine.processDrawCard(state, "p2");
+
+  assert.equal(state.hasDrawnCardThisTurn, true);
+  assert.equal(state.drawnCardInstanceId, "draw_5_diamonds");
+  assert.equal(state.turnOrder[state.currentPlayerIndex], "p2");
+
+  GameEngine.processPassTurn(state, "p2");
+
+  assert.equal(state.topCard.cardInstanceId, "top_jack_hearts");
+  assert.equal(state.activeEffect.type, EFFECT_TYPES.RANK_REQUEST);
+  assert.equal(state.activeEffect.requestedRank, "5");
+  assert.equal(state.activeEffect.requesterPlayerId, "p1");
+  assert.equal(state.activeEffect.targetPlayerId, "p3");
+  assert.equal(state.hasDrawnCardThisTurn, false);
+  assert.equal(state.drawnCardInstanceId, null);
+  assert.equal(state.turnOrder[state.currentPlayerIndex], "p3");
+  assert.deepEqual(state.hands.p2.map(c => c.cardInstanceId), [
+    "held_5_clubs",
+    "held_joker",
+    "held_9_spades",
+    "draw_5_diamonds"
+  ]);
 });
 
 test("recordHistory increments state version and stores public move summary", () => {

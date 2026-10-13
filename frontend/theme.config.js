@@ -16,8 +16,12 @@ export const theme = {
     functionalIconOpacity: 0.16
   },
   animations: {
-    throwDuration: 300,
-    drawDuration: 200,
+    throwDuration: 560,
+    drawDuration: 480,
+    throwStagger: 88,
+    drawStagger: 76,
+    throwLandingAt: 0.86,
+    drawLandingAt: 0.88,
     bounceIntensity: 0.05,
     arcHeight: 60,
     drawPileShrinkScale: 0.94,

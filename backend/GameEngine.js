@@ -22,6 +22,7 @@ import {
 
 const AUDIT_LOG_LIMIT = 300;
 const STATE_SNAPSHOT_LIMIT = 80;
+const INITIAL_DEAL_MAX_ATTEMPTS = 64;
 
 export class GameEngine {
   static createDeck(useJokers, deckIndex) {
@@ -59,37 +60,72 @@ export class GameEngine {
     const firstPlayerIndex = requestedFirstPlayerIndex !== -1
       ? requestedFirstPlayerIndex
       : (players.length > 0 ? Math.floor(Math.random() * players.length) : 0);
-    let decks = [];
+    let fullDeck = [];
     for (let i = 0; i < settings.deckCount; i++) {
-      decks = decks.concat(this.createDeck(settings.useJokers, i));
+      fullDeck = fullDeck.concat(this.createDeck(settings.useJokers, i));
     }
-    this.shuffle(decks);
-
-    const hands = {};
-    players.forEach(p => hands[p.id] = []);
-
-    // Deal 5 cards each
-    for (let i = 0; i < 5; i++) {
-      players.forEach(p => {
-        hands[p.id].push(decks.pop());
-      });
+    const cardsNeededForHands = players.length * 5;
+    if (fullDeck.length <= cardsNeededForHands) {
+      const error = new Error("Unable to initialize game: the deck has too few cards for all hands and a start card.");
+      error.code = "INITIAL_DEAL_TOO_SMALL";
+      throw error;
     }
 
-    let topCard = null;
-    const discardPile = [];
-    
-    // Znajdź kartę startową (niefunkcyjną)
-    const skippedFunctionalStartCards = [];
-    while (decks.length > 0) {
-      const card = decks.pop();
-      if (this.isNonFunctional(card)) {
-        topCard = card;
+    let successfulDeal = null;
+    for (let attempt = 1; attempt <= INITIAL_DEAL_MAX_ATTEMPTS; attempt++) {
+      const decks = [...fullDeck];
+      this.shuffle(decks);
+
+      const hands = Object.fromEntries(players.map(player => [player.id, []]));
+      for (let round = 0; round < 5; round++) {
+        for (const player of players) {
+          hands[player.id].push(decks.pop());
+        }
+      }
+
+      let topCard = null;
+      const skippedFunctionalStartCards = [];
+      let remainingCandidates = decks.length;
+      while (remainingCandidates > 0) {
+        const candidate = decks.pop();
+        if (this.isNonFunctional(candidate)) {
+          topCard = candidate;
+          break;
+        }
+
+        skippedFunctionalStartCards.push(candidate);
+        decks.unshift(candidate);
+        remainingCandidates -= 1;
+      }
+
+      if (topCard) {
+        successfulDeal = {
+          hands,
+          drawPile: decks,
+          topCard,
+          skippedFunctionalStartCards,
+          attempt
+        };
         break;
-      } else {
-        skippedFunctionalStartCards.push(card);
-        decks.unshift(card); // na spód
       }
     }
+
+    if (!successfulDeal) {
+      const error = new Error(
+        `Unable to initialize game: no neutral start card remained after ${INITIAL_DEAL_MAX_ATTEMPTS} complete deal attempts.`
+      );
+      error.code = "NO_NEUTRAL_START_CARD";
+      throw error;
+    }
+
+    const {
+      hands,
+      drawPile: decks,
+      topCard,
+      skippedFunctionalStartCards,
+      attempt: initialDealAttempts
+    } = successfulDeal;
+    const discardPile = [];
 
     const state = {
       topCard,
@@ -112,7 +148,8 @@ export class GameEngine {
         }
       }],
       privateDealLog: {
-        skippedFunctionalStartCards: skippedFunctionalStartCards.map(card => this.publicCard(card))
+        skippedFunctionalStartCards: skippedFunctionalStartCards.map(card => this.publicCard(card)),
+        initialDealAttempts
       },
       auditLog: [],
       stateSnapshots: [],
@@ -121,6 +158,7 @@ export class GameEngine {
       hands,
       drawPile: decks,
       discardPile,
+      inactiveDepartedCards: [],
       direction: 1, // 1 dla zgodnego z ruchem, -1 dla przeciwnego
       skipTurns: {},
       turnEvents: [],
@@ -150,6 +188,7 @@ export class GameEngine {
         ),
         drawPileCardIds: decks.map(card => card.cardInstanceId),
         skippedFunctionalStartCards: skippedFunctionalStartCards.map(card => this.privateCard(card)),
+        initialDealAttempts,
         startCard: this.privateCard(topCard),
         settings: { ...settings }
       },
@@ -181,11 +220,25 @@ export class GameEngine {
     return state.turnOrder[this.getNextPlayerIndex(state, direction === "previous" ? -1 : 1)];
   }
 
+  static hasPendingPauseForPlayer(state, playerId) {
+    return Boolean(playerId && (state.skipTurns?.[playerId] || 0) > 0);
+  }
+
+  static shouldSuppressDrawPenaltyForPause(state, targetPlayerId) {
+    return state.activeEffect?.type !== EFFECT_TYPES.DRAW_PENALTY
+      && this.hasPendingPauseForPlayer(state, targetPlayerId);
+  }
+
   static advanceTurn(state, steps = 1) {
     if (state.gameOver) return state;
     if (state.turnOrder.length === 0) return state;
 
     state.currentPlayerIndex = this.getNextPlayerIndex(state, steps);
+
+    if (this.isRequestEffect(state.activeEffect)) {
+      this.advanceRequestPastPausedTargets(state);
+      return this.expireMakaoWindowsForCurrentTurn(state);
+    }
 
     if (state.activeEffect?.targetPlayerId) {
       const targetIndex = state.turnOrder.indexOf(state.activeEffect.targetPlayerId);
@@ -199,26 +252,80 @@ export class GameEngine {
     return this.expireMakaoWindowsForCurrentTurn(state);
   }
 
+  static getNextPlayerIdAfter(state, playerId, direction = state.direction || 1) {
+    const currentIndex = state.turnOrder.indexOf(playerId);
+    if (currentIndex === -1 || state.turnOrder.length === 0) return null;
+    const nextIndex = (currentIndex + direction + state.turnOrder.length) % state.turnOrder.length;
+    return state.turnOrder[nextIndex] || null;
+  }
+
+  static consumePauseForPlayer(state, playerId) {
+    const pauses = state.skipTurns?.[playerId] || 0;
+    if (pauses <= 0) return null;
+
+    if (!state.skipTurns) state.skipTurns = {};
+    state.skipTurns[playerId] = pauses - 1;
+    const nextPlayerId = this.getNextPlayerIdAfter(state, playerId);
+    this.addTurnEvent(state, {
+      type: state.skipTurns[playerId] > 0 ? "skip_used" : "skip_finished",
+      playerId,
+      pausedPlayerId: playerId,
+      consumed: 1,
+      remaining: state.skipTurns[playerId],
+      nextPlayerId,
+      currentPlayerId: nextPlayerId
+    });
+    return nextPlayerId;
+  }
+
   static consumePausesFromCurrent(state) {
     const maxPauses = Math.max(0, ...state.turnOrder.map(id => state.skipTurns?.[id] || 0));
     let guard = state.turnOrder.length * (maxPauses + 1);
     while (guard > 0) {
       const playerId = state.turnOrder[state.currentPlayerIndex];
-      const pauses = state.skipTurns?.[playerId] || 0;
-      if (pauses <= 0) break;
+      const nextPlayerId = this.consumePauseForPlayer(state, playerId);
+      if (!nextPlayerId) break;
 
-      state.skipTurns[playerId] = pauses - 1;
-      const nextPlayerId = state.turnOrder[this.getNextPlayerIndex(state)];
-      this.addTurnEvent(state, {
-        type: state.skipTurns[playerId] > 0 ? "skip_used" : "skip_finished",
-        playerId,
-        pausedPlayerId: playerId,
-        consumed: 1,
-        remaining: state.skipTurns[playerId],
-        nextPlayerId,
-        currentPlayerId: nextPlayerId
-      });
-      state.currentPlayerIndex = this.getNextPlayerIndex(state);
+      const nextIndex = state.turnOrder.indexOf(nextPlayerId);
+      if (nextIndex === -1) break;
+      state.currentPlayerIndex = nextIndex;
+      guard -= 1;
+    }
+
+    return state;
+  }
+
+  static advanceRequestPastPausedTargets(state) {
+    if (!this.isRequestEffect(state.activeEffect)) return state;
+
+    const maxPauses = Math.max(0, ...state.turnOrder.map(id => state.skipTurns?.[id] || 0));
+    let guard = state.turnOrder.length * (maxPauses + 1) + 1;
+
+    while (guard > 0 && this.isRequestEffect(state.activeEffect)) {
+      const targetPlayerId = state.activeEffect.targetPlayerId || state.turnOrder[state.currentPlayerIndex];
+      const targetIndex = state.turnOrder.indexOf(targetPlayerId);
+      if (targetIndex === -1) {
+        state.activeEffect = null;
+        break;
+      }
+
+      state.currentPlayerIndex = targetIndex;
+      if ((state.skipTurns?.[targetPlayerId] || 0) <= 0) {
+        return state;
+      }
+
+      const nextPlayerId = this.consumePauseForPlayer(state, targetPlayerId);
+      this.advanceRequestAfterPass(state, targetPlayerId);
+
+      if (!this.isRequestEffect(state.activeEffect)) {
+        const nextIndex = nextPlayerId ? state.turnOrder.indexOf(nextPlayerId) : -1;
+        if (nextIndex !== -1) {
+          state.currentPlayerIndex = nextIndex;
+          this.consumePausesFromCurrent(state);
+        }
+        return state;
+      }
+
       guard -= 1;
     }
 
@@ -246,20 +353,41 @@ export class GameEngine {
     if (state.gameOver) return state;
     if (!state.turnOrder?.length) return state;
 
+    const transitions = [];
+    let stateChanged = false;
     let guard = (state.turnOrder?.length || 0) * Math.max(1, state.activeEffect?.amount || 1) + 10;
     while (guard > 0 && state.activeEffect?.type === EFFECT_TYPES.SKIP_TURN) {
       const targetPlayerId = state.activeEffect.targetPlayerId;
+      const amount = state.activeEffect.amount || 1;
       const targetIndex = state.turnOrder.indexOf(targetPlayerId);
       if (targetIndex === -1) {
         state.activeEffect = null;
+        stateChanged = true;
+        transitions.push({ targetPlayerId, amount, reason: "missing_target" });
         break;
       }
 
+      if (state.currentPlayerIndex !== targetIndex) stateChanged = true;
       state.currentPlayerIndex = targetIndex;
       if (this.hasLegalCard(state, targetPlayerId)) break;
 
       this.resolveSkipEffect(state);
+      stateChanged = true;
+      transitions.push({
+        targetPlayerId,
+        amount,
+        nextPlayerId: this.getCurrentPlayerId(state)
+      });
       guard -= 1;
+    }
+
+    if (stateChanged) {
+      this.recordHistory(state, "automatic_skip_resolved", {
+        details: {
+          transitionCount: transitions.length,
+          transitions
+        }
+      });
     }
 
     return state;
@@ -310,6 +438,7 @@ export class GameEngine {
       handCounts: this.getHandCounts(state),
       drawPileCount: state.drawPile?.length || 0,
       discardPileCount: state.discardPile?.length || 0,
+      inactiveDepartedCardCount: state.inactiveDepartedCards?.length || 0,
       zones: {
         hands: Object.fromEntries(
           Object.entries(state.hands || {}).map(([playerId, cards]) => [
@@ -319,6 +448,7 @@ export class GameEngine {
         ),
         drawPile: (state.drawPile || []).map(card => card.cardInstanceId),
         discardPile: (state.discardPile || []).map(card => card.cardInstanceId),
+        inactiveDepartedCards: (state.inactiveDepartedCards || []).map(card => card.cardInstanceId),
         topCard: state.topCard?.cardInstanceId || null
       },
       skipTurns: { ...(state.skipTurns || {}) },
@@ -615,84 +745,31 @@ export class GameEngine {
 
   static refillDrawPileIfNeeded(state) {
     if (state.drawPile.length > 0) return false;
-    if (state.discardPile.length === 0) return false;
-    const recycledCards = state.discardPile.map(card => this.privateCard(card));
-    this.shuffle(state.discardPile);
-    state.drawPile = state.discardPile.map(card => this.resetCardForDraw(card));
+    const discardCards = state.discardPile || [];
+    const inactiveDepartedCards = state.inactiveDepartedCards || [];
+    if (discardCards.length === 0 && inactiveDepartedCards.length === 0) return false;
+
+    const cardsToRecycle = [...discardCards, ...inactiveDepartedCards];
+    const recycledCards = cardsToRecycle.map(card => this.privateCard(card));
+    const departedCardCount = inactiveDepartedCards.length;
+    this.shuffle(cardsToRecycle);
+    state.drawPile = cardsToRecycle.map(card => this.resetCardForDraw(card));
     state.discardPile = [];
-    state.needsNeutralTopAfterRefill = true;
+    state.inactiveDepartedCards = [];
+    this.addTurnEvent(state, {
+      type: "draw_pile_refilled",
+      topCard: this.publicCard(state.topCard)
+    });
     this.recordAudit(state, "deal_log", "draw_pile_refilled", {
       details: {
         recycledCardCount: recycledCards.length,
+        departedCardCount,
         recycledCards,
         newDrawPileCardIds: state.drawPile.map(card => card.cardInstanceId)
       },
       includeSnapshot: true
     });
     return true;
-  }
-
-  static selectNeutralTopCardAfterRefill(state) {
-    if (!state.needsNeutralTopAfterRefill) return null;
-    state.needsNeutralTopAfterRefill = false;
-
-    const hasNeutralCard = state.drawPile.some(card => this.isNonFunctional(getEffectiveCard(card)));
-    if (!hasNeutralCard) {
-      this.recordAudit(state, "deal_log", "neutral_table_card_unavailable", {
-        details: {
-          drawPileCount: state.drawPile.length,
-          oldTopCard: this.privateCard(state.topCard)
-        },
-        includeSnapshot: true
-      });
-      return null;
-    }
-
-    const oldTopCard = state.topCard;
-    const skippedFunctionalCards = [];
-    let neutralCard = null;
-    let guard = state.drawPile.length;
-
-    while (guard > 0 && state.drawPile.length > 0) {
-      const candidate = state.drawPile.pop();
-      if (this.isNonFunctional(getEffectiveCard(candidate))) {
-        neutralCard = candidate;
-        break;
-      }
-
-      skippedFunctionalCards.push(candidate);
-      state.drawPile.unshift(candidate);
-      guard -= 1;
-    }
-
-    if (!neutralCard) {
-      this.recordAudit(state, "deal_log", "neutral_table_card_unavailable", {
-        details: {
-          drawPileCount: state.drawPile.length,
-          oldTopCard: this.privateCard(state.topCard)
-        },
-        includeSnapshot: true
-      });
-      return null;
-    }
-
-    if (oldTopCard) {
-      state.discardPile.push(oldTopCard);
-    }
-    state.topCard = neutralCard;
-    this.addTurnEvent(state, {
-      type: "draw_pile_refilled",
-      topCard: this.publicCard(neutralCard)
-    });
-    this.recordAudit(state, "deal_log", "neutral_table_card_selected", {
-      details: {
-        oldTopCard: this.privateCard(oldTopCard),
-        newTopCard: this.privateCard(neutralCard),
-        skippedFunctionalCards: skippedFunctionalCards.map(card => this.privateCard(card))
-      },
-      includeSnapshot: true
-    });
-    return neutralCard;
   }
 
   static normalizeJokerDeclarations(payload = {}, cardsToPlay = []) {
@@ -762,6 +839,7 @@ export class GameEngine {
       ? state.turnOrder[this.getNextPlayerIndex(state)]
       : currentPlayerId;
 
+    this.deactivateDepartedHand(state, playerId);
     delete state.hands[playerId];
     delete state.skipTurns?.[playerId];
     delete state.makao?.[playerId];
@@ -777,7 +855,8 @@ export class GameEngine {
     this.addTurnEvent(state, {
       type: options.eventType || "host_removed_player",
       playerId,
-      nextPlayerId: nextCandidate
+      nextPlayerId: nextCandidate,
+      ...(options.playerName ? { playerName: options.playerName } : {})
     });
 
     if (state.turnOrder.length <= 1) {
@@ -801,6 +880,17 @@ export class GameEngine {
     return state;
   }
 
+  static deactivateDepartedHand(state, playerId) {
+    const hand = state.hands?.[playerId] || [];
+    if ((state.turnOrder?.length || 0) < 3 || hand.length === 0) return [];
+
+    if (!Array.isArray(state.inactiveDepartedCards)) {
+      state.inactiveDepartedCards = [];
+    }
+    state.inactiveDepartedCards.push(...hand);
+    return [...hand];
+  }
+
   static timeOutPlayer(state, playerId, at = Date.now()) {
     if (state.gameOver) {
       throw new Error("Game is already over.");
@@ -818,6 +908,7 @@ export class GameEngine {
       state.timedOutPlayers.push({ playerId, at });
     }
 
+    this.deactivateDepartedHand(state, playerId);
     delete state.hands[playerId];
     delete state.skipTurns?.[playerId];
     delete state.makao?.[playerId];
@@ -963,10 +1054,9 @@ export class GameEngine {
 
   static drawCards(state, playerId, amount) {
     const drawnCards = [];
-    let refilledDuringDraw = false;
 
     for (let i = 0; i < amount; i++) {
-      refilledDuringDraw = this.refillDrawPileIfNeeded(state) || refilledDuringDraw;
+      this.refillDrawPileIfNeeded(state);
       const card = state.drawPile.pop();
       if (card) {
         state.hands[playerId].push(card);
@@ -974,15 +1064,16 @@ export class GameEngine {
       }
     }
 
-    if (refilledDuringDraw) {
-      this.selectNeutralTopCardAfterRefill(state);
-    }
-
     return drawnCards;
   }
 
-  static hasLegalCard(state, playerId) {
-    return state.hands[playerId]?.some(card => isCardLegal(card, state)) || false;
+  static hasLegalCard(state, playerId, { includeUndeclaredJokers = true } = {}) {
+    return state.hands[playerId]?.some(card => {
+      if (!includeUndeclaredJokers && card.rank === "joker" && !card.jokerDeclaration) {
+        return false;
+      }
+      return isCardLegal(card, state);
+    }) || false;
   }
 
   static canPlayDownToOne(state, playerId) {
@@ -1019,6 +1110,18 @@ export class GameEngine {
     }
 
     return jokers.length >= cardsToPlayCount;
+  }
+
+  static canPlayActiveDrawPenaltyBatch(cards, state) {
+    if (!cards.length || !isCardLegal(cards[0], state)) return false;
+
+    const anchor = cards[0];
+    if (!isBattleCard(anchor)) {
+      return cards.every(card => isCardLegal(card, state));
+    }
+
+    const anchorRank = getEffectiveCard(anchor).rank;
+    return cards.every(card => getEffectiveCard(card).rank === anchorRank);
   }
 
   static processAutomaticDraws(state) {
@@ -1185,11 +1288,6 @@ export class GameEngine {
       throw new Error("Makao catch window is not open yet.");
     }
     if (makaoState.catchUntil && now > makaoState.catchUntil) {
-      state.makao[targetPlayerId] = {
-        declared: true,
-        declaredAt: now,
-        autoSafeAfterCatchWindow: true
-      };
       throw new Error("Makao catch window has expired.");
     }
 
@@ -1294,8 +1392,7 @@ export class GameEngine {
     const lastResolvedCard = resolvedCardsToPlay[resolvedCardsToPlay.length - 1];
 
     if (state.activeEffect?.type === EFFECT_TYPES.DRAW_PENALTY) {
-      const allCardsFitBattle = resolvedCardsToPlay.every(card => isCardLegal(card, state));
-      if (!allCardsFitBattle) {
+      if (!this.canPlayActiveDrawPenaltyBatch(resolvedCardsToPlay, state)) {
         throw new Error("All battle cards must match the active penalty rules.");
       }
     }
@@ -1344,6 +1441,7 @@ export class GameEngine {
       const battleDriver = [...effectiveCardsToPlay].reverse().find(c => isBattleCard(c));
       const battleDirection = this.getBattleDirection(battleDriver, state.turnOrder.length);
       const targetPlayer = this.getEffectTargetPlayerId(state, battleDirection);
+      const suppressDrawPenaltyForPause = this.shouldSuppressDrawPenaltyForPause(state, targetPlayer);
       if (state.activeEffect && state.activeEffect.type === EFFECT_TYPES.DRAW_PENALTY) {
         state.activeEffect.amount += addedValue;
         state.activeEffect.targetPlayerId = targetPlayer;
@@ -1352,7 +1450,7 @@ export class GameEngine {
         delete state.activeEffect.penaltyDrawnCount;
         if (!state.activeEffect.sourceCards) state.activeEffect.sourceCards = [];
         state.activeEffect.sourceCards.push(...orderedCardIds);
-      } else {
+      } else if (!suppressDrawPenaltyForPause) {
         state.activeEffect = {
           type: EFFECT_TYPES.DRAW_PENALTY,
           amount: addedValue,
@@ -1363,6 +1461,9 @@ export class GameEngine {
           canBeAccepted: true,
           canBeCountered: true
         };
+      }
+      if (suppressDrawPenaltyForPause && this.isRequestEffect(state.activeEffect)) {
+        this.advanceRequestAfterAnswer(state, playerId);
       }
     } else if (firstRank === "4") {
       const amount = (state.activeEffect?.type === EFFECT_TYPES.SKIP_TURN ? state.activeEffect.amount : 0) + cardsToPlay.length;
@@ -1659,6 +1760,10 @@ export class GameEngine {
       throw new Error("It's not your turn.");
     }
 
+    if (state.activeEffect?.type === EFFECT_TYPES.DRAW_PENALTY) {
+      throw new Error("Draw penalty cards one at a time.");
+    }
+
     this.expireMakaoWindowsForCurrentTurn(state);
 
     if (!state.hasDrawnCardThisTurn) {
@@ -1668,39 +1773,13 @@ export class GameEngine {
 
     this.clearTurnEvents(state);
 
-    let acceptedPenalty = null;
-    if (state.activeEffect?.type === EFFECT_TYPES.DRAW_PENALTY) {
-      const amount = state.activeEffect.amount;
-      const alreadyDrawnCount = this.getPenaltyDrawnCount(state);
-      const drawCount = Math.max(0, amount - alreadyDrawnCount);
-      if (drawCount > 0) {
-        this.drawCards(state, playerId, drawCount);
-        this.syncMakaoAfterHandChange(state, playerId);
-      }
-      acceptedPenalty = { amount };
-    }
-
-    // Clear effects properly
-    if (state.activeEffect && (
-      state.activeEffect.type === EFFECT_TYPES.SUIT_REQUEST ||
-      state.activeEffect.type === EFFECT_TYPES.RANK_REQUEST ||
-      state.activeEffect.type === EFFECT_TYPES.DRAW_PENALTY
-    )) {
-      state.activeEffect = null;
+    if (this.isRequestEffect(state.activeEffect)) {
+      this.advanceRequestAfterPass(state, playerId);
     }
 
     state.hasDrawnCardThisTurn = false;
     state.drawnCardInstanceId = null;
     this.advanceTurn(state);
-    if (acceptedPenalty) {
-      this.addTurnEvent(state, {
-        type: "penalty_accepted",
-        playerId,
-        amount: acceptedPenalty.amount,
-        drawnCount: acceptedPenalty.amount,
-        nextPlayerId: state.turnOrder[state.currentPlayerIndex]
-      });
-    }
     return state;
   }
 }

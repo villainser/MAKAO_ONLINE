@@ -22,8 +22,17 @@ cd "$PROJECT_DIR/frontend"
 npm run android:sync
 
 cd "$PROJECT_DIR/frontend/android"
-./gradlew assembleDebug
+if [ -n "${JAVA_HOME:-}" ]; then
+  ./gradlew -Dorg.gradle.java.home="$JAVA_HOME" assembleDebug
+else
+  ./gradlew assembleDebug
+fi
 
 echo
 echo "APK:"
-ls -lh "$PROJECT_DIR/frontend/android/app/build/outputs/apk/debug/app-debug.apk"
+APK="$("$PROJECT_DIR/scripts/android_apk_path.sh" debug)"
+if [ ! -f "$APK" ]; then
+  echo "Versioned APK was not created: $APK" >&2
+  exit 1
+fi
+ls -lh "$APK"

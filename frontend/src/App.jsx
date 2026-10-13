@@ -1,5 +1,5 @@
+import { migrateSavedServer } from './serverMigration.js';
 import { useState, useEffect, useMemo, useCallback, useRef, useLayoutEffect } from 'react';
-import { Capacitor, registerPlugin } from '@capacitor/core';
 import { io } from 'socket.io-client';
 import Home from './components/Home';
 import Lobby from './components/Lobby';
@@ -7,20 +7,37 @@ import Game from './components/Game';
 import './App.css';
 import { EFFECT_TYPES, EVENTS } from './shared/constants';
 import audioManager from './audio/AudioManager.js';
+import { isAndroidNativeShell, nativeGameBridge } from './nativeBridge.js';
+import {
+  canSendPendingLeaveThroughServer,
+  clearPendingLeaveAfterAck,
+  createPendingLeaveIntent,
+  readPendingLeave,
+  writePendingLeave
+} from './reliableLeave.js';
+import { requestSessionRefresh } from './sessionRefresh.js';
+import {
+  clearResumeToken,
+  persistResumeTokenFromAck,
+  readResumeToken,
+  resumeSessionPayload
+} from './resumeTokenStore.js';
+import { isTerminalRoomReconnectFailure, persistActiveRoom } from './sessionPersistence.js';
+import { clearPendingGameActionsForSession } from './useReliableGameActions.js';
+import { getHumanMoveErrorMessage, TABLE_RETURN_COPY } from './gameFeelRules.js';
+import { shouldUseNativeTable } from './nativeTableMode.js';
 
 const customServerStorageKey = 'makaoServerUrl';
 const roomStorageKey = 'makaoRoomId';
 const serverPrefsVersionStorageKey = 'makaoServerPrefsVersion';
-const currentAndroidServerPrefsVersion = '2026-05-27-default-server-reset';
+const currentAndroidServerPrefsVersion = '2026-06-06-production-server-default';
 
-const defaultServerUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? 'http://localhost:3001'
+const bundledServerUrl = isAndroidNativeShell
+  ? (import.meta.env.VITE_SERVER_URL || '')
   : window.location.origin;
-const bundledServerUrl = import.meta.env.VITE_SERVER_URL || defaultServerUrl;
-const nativeGameBridge = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
-  ? registerPlugin('NativeGame')
-  : null;
-const isAndroidNativeShell = Boolean(nativeGameBridge);
+const useNativeTable = shouldUseNativeTable({
+  isAndroidShell: isAndroidNativeShell
+});
 const overlaySuitMeta = {
   hearts: { label: 'Kier', symbol: '♥', tone: 'red' },
   diamonds: { label: 'Karo', symbol: '♦', tone: 'red' },
@@ -111,7 +128,12 @@ function getInitialServerUrl() {
     }
   }
   const saved = window.localStorage.getItem(customServerStorageKey);
-  return saved ? normalizeServerUrl(saved) : bundledServerUrl;
+  const migrated = migrateSavedServer(saved, bundledServerUrl, import.meta.env.VITE_RETIRED_SERVER_URLS || '');
+  if (saved && migrated !== saved) {
+    window.localStorage.removeItem(customServerStorageKey);
+    window.localStorage.removeItem(roomStorageKey);
+  }
+  return migrated ? normalizeServerUrl(migrated) : bundledServerUrl;
 }
 
 function getClientId() {
@@ -138,6 +160,7 @@ function NativeTableOverlay({
   const [choicePopup, setChoicePopup] = useState(null);
   const [overlayGameOver, setOverlayGameOver] = useState(null);
   const [overlayTurnStatus, setOverlayTurnStatus] = useState(null);
+  const [refreshingSession, setRefreshingSession] = useState(false);
   const menuButtonRef = useRef(null);
   const menuPanelRef = useRef(null);
   const confirmLeavePanelRef = useRef(null);
@@ -145,6 +168,7 @@ function NativeTableOverlay({
   const gameOverPanelRef = useRef(null);
   const errorPanelRef = useRef(null);
   const overlayToastTimersRef = useRef(new Map());
+  const sessionRefreshTimerRef = useRef(null);
 
   const players = gameState?.players?.length ? gameState.players : room?.players || [];
   const stateCurrentPlayerId = gameState?.turnOrder?.[gameState?.currentPlayerIndex];
@@ -155,16 +179,23 @@ function NativeTableOverlay({
   const isGameOver = Boolean(overlayTurnStatus?.gameOver || gameState?.gameOver);
   const gameOverPayload = isGameOver
     ? {
-        winnerId: gameState?.winnerId || '',
-        winnerName: stateWinnerName,
-        didWin: Boolean(gameState?.winnerId && gameState.winnerId === socketId),
-        canReturnLobby: isHost
+        ...(overlayGameOver || {}),
+        winnerId: gameState?.winnerId || overlayGameOver?.winnerId || '',
+        winnerName: gameState?.winnerId ? stateWinnerName : (overlayGameOver?.winnerName || stateWinnerName),
+        didWin: gameState?.winnerId
+          ? gameState.winnerId === socketId
+          : Boolean(overlayGameOver?.didWin),
+        canReturnLobby: overlayGameOver?.canReturnLobby ?? isHost,
+        endReason: overlayGameOver?.endReason || gameState?.endReason || '',
+        leftPlayerName: overlayGameOver?.leftPlayerName || ''
       }
     : overlayGameOver;
   const overlayGameOverOpen = Boolean(gameOverPayload);
   const didWin = Boolean(gameOverPayload?.didWin);
   const winnerName = gameOverPayload?.winnerName || stateWinnerName;
   const canReturnLobby = gameOverPayload?.canReturnLobby ?? isHost;
+  const endedBecausePlayerLeft = gameOverPayload?.endReason === 'not_enough_players';
+  const leftPlayerName = gameOverPayload?.leftPlayerName || 'Drugi gracz';
   const overlayMenuOpen = menuOpen && !overlayGameOverOpen;
   const overlayConfirmLeaveOpen = confirmLeaveOpen && !overlayGameOverOpen;
   const overlayChoicePopup = overlayGameOverOpen ? null : choicePopup;
@@ -342,6 +373,19 @@ function NativeTableOverlay({
       });
       return;
     }
+    if (event?.type === 'session_refresh_result') {
+      const payload = event.payload || {};
+      window.clearTimeout(sessionRefreshTimerRef.current);
+      sessionRefreshTimerRef.current = null;
+      setRefreshingSession(false);
+      if (payload.success) setMenuOpen(false);
+      pushOverlayToast({
+        level: payload.success ? 'info' : 'error',
+        title: TABLE_RETURN_COPY.title,
+        message: payload.success ? TABLE_RETURN_COPY.success : TABLE_RETURN_COPY.failure
+      });
+      return;
+    }
     if (event?.type === 'request_choice_open') {
       const payload = event.payload || {};
       const options = Array.isArray(payload.options) ? payload.options : [];
@@ -388,7 +432,9 @@ function NativeTableOverlay({
         winnerId: payload.winnerId || '',
         winnerName: payload.winnerName || '',
         didWin: Boolean(payload.didWin),
-        canReturnLobby: Boolean(payload.canReturnLobby)
+        canReturnLobby: Boolean(payload.canReturnLobby),
+        endReason: payload.endReason || '',
+        leftPlayerName: payload.leftPlayerName || ''
       });
     }
   }, [pushOverlayToast]);
@@ -437,9 +483,35 @@ function NativeTableOverlay({
   }, [handleHybridOverlayEvent]);
 
   useEffect(() => () => {
+    window.clearTimeout(sessionRefreshTimerRef.current);
     overlayToastTimersRef.current.forEach(timer => window.clearTimeout(timer));
     overlayToastTimersRef.current.clear();
   }, []);
+
+  const refreshSessionFromOverlay = () => {
+    if (refreshingSession) return;
+    setRefreshingSession(true);
+    window.clearTimeout(sessionRefreshTimerRef.current);
+    sessionRefreshTimerRef.current = window.setTimeout(() => {
+      sessionRefreshTimerRef.current = null;
+      setRefreshingSession(false);
+      pushOverlayToast({
+        level: 'warning',
+        title: TABLE_RETURN_COPY.title,
+        message: TABLE_RETURN_COPY.failure
+      });
+    }, 9000);
+    sendOverlayCommand('refresh_session', { source: 'react_overlay' }).catch(() => {
+      window.clearTimeout(sessionRefreshTimerRef.current);
+      sessionRefreshTimerRef.current = null;
+      setRefreshingSession(false);
+      pushOverlayToast({
+        level: 'error',
+        title: TABLE_RETURN_COPY.title,
+        message: TABLE_RETURN_COPY.failure
+      });
+    });
+  };
 
   const requestLeaveFromOverlay = () => {
     setMenuOpen(false);
@@ -508,6 +580,15 @@ function NativeTableOverlay({
             <strong>Stół {room.id}</strong>
             <span>{players.length} graczy</span>
           </div>
+          <button
+            type="button"
+            className="native-table-overlay-refresh"
+            onClick={refreshSessionFromOverlay}
+            disabled={refreshingSession}
+            aria-busy={refreshingSession}
+          >
+            {refreshingSession ? TABLE_RETURN_COPY.pending.toUpperCase() : TABLE_RETURN_COPY.action.toUpperCase()}
+          </button>
           <button type="button" className="native-table-overlay-danger" onClick={requestLeaveFromOverlay}>
             REZYGNUJ
           </button>
@@ -660,23 +741,27 @@ function NativeTableOverlay({
           <div ref={gameOverPanelRef} className="native-table-overlay-game-over">
             <div className="native-table-overlay-game-over-copy">
               <strong id="native-table-game-over-title">
-                {didWin ? 'Wygrałeś' : 'Koniec gry'}
+                {endedBecausePlayerLeft
+                  ? `${leftPlayerName} opuścił pokój`
+                  : (didWin ? 'Wygrałeś' : 'Koniec gry')}
               </strong>
               <span>
-                {gameState?.winnerId
-                  ? (didWin ? `Zwycięzca: ${winnerName}` : `Wygrał: ${winnerName}`)
-                  : 'Partia zakończona.'}
+                {endedBecausePlayerLeft
+                  ? 'Partia została zakończona. Możesz poczekać w pokoju albo wyjść.'
+                  : (gameState?.winnerId
+                    ? (didWin ? `Zwycięzca: ${winnerName}` : `Wygrał: ${winnerName}`)
+                    : 'Partia zakończona.')}
               </span>
               {!canReturnLobby && <small>Czeka host.</small>}
             </div>
             <div className="native-table-overlay-game-over-actions">
               {canReturnLobby && (
                 <button type="button" className="native-table-overlay-menu-button" onClick={returnToLobbyFromOverlay}>
-                  KOLEJNA PARTIA
+                  {endedBecausePlayerLeft ? 'CZEKAJ W POKOJU' : 'KOLEJNA PARTIA'}
                 </button>
               )}
               <button type="button" className="native-table-overlay-secondary" onClick={confirmLeaveFromOverlay}>
-                WYJDŹ
+                OPUŚĆ POKÓJ
               </button>
             </div>
           </div>
@@ -746,23 +831,62 @@ function App() {
 
   useEffect(() => {
     const activeSocket = socket;
+    let leaveRetryTimer = null;
+    let leaveRetryInterval = null;
+    let leaveInFlight = false;
+
+    const flushPendingLeave = () => {
+      const intent = readPendingLeave();
+      if (!intent || !activeSocket.connected) return false;
+      if (!canSendPendingLeaveThroughServer(intent, serverUrl)) return false;
+      if (leaveInFlight) return true;
+      leaveInFlight = true;
+      activeSocket.timeout(6000).emit(EVENTS.LEAVE_ROOM, intent, (timeoutError, response) => {
+        leaveInFlight = false;
+        if (!timeoutError && response?.success) {
+          clearResumeToken(intent.serverOrigin || serverUrl, intent.roomId, intent.clientId);
+          clearPendingGameActionsForSession(intent.roomId, intent.clientId);
+          clearPendingLeaveAfterAck(intent.actionId);
+          return;
+        }
+        window.clearTimeout(leaveRetryTimer);
+        leaveRetryTimer = window.setTimeout(flushPendingLeave, 1000);
+      });
+      return true;
+    };
+
     activeSocket.connect();
+    leaveRetryInterval = window.setInterval(flushPendingLeave, 1000);
 
     activeSocket.on('connect', () => {
       setConnectionStatus('connected');
       setSocketId(clientId);
+      if (flushPendingLeave()) return;
       const roomId = window.localStorage.getItem(roomStorageKey);
       if (roomId) {
-        activeSocket.emit(EVENTS.RECONNECT_SESSION, { roomId, clientId }, (response) => {
+        const payload = resumeSessionPayload({ serverUrl, roomId, clientId });
+        activeSocket.emit(EVENTS.RECONNECT_SESSION, payload, (response) => {
           if (response?.success && response.room) {
             setSessionNotice('');
-            window.localStorage.setItem(roomStorageKey, response.room.id);
+            persistActiveRoom(response.room);
+            persistResumeTokenFromAck({
+              serverUrl,
+              roomId: response.room.id,
+              clientId,
+              response
+            });
             setRoom(response.room);
-          } else {
+          } else if (isTerminalRoomReconnectFailure(response)) {
             window.localStorage.removeItem(roomStorageKey);
+            clearResumeToken(serverUrl, roomId, clientId);
+            clearPendingGameActionsForSession(roomId, clientId);
             setRoom(null);
             setGameState(null);
             setSessionNotice('Poprzednia sesja jest zakończona albo niedostępna.');
+          } else {
+            setRoom(null);
+            setGameState(null);
+            setSessionNotice(response?.error || 'Nie udało się wznowić sesji. Spróbuj ponownie.');
           }
         });
       }
@@ -778,11 +902,7 @@ function App() {
 
     activeSocket.on(EVENTS.ROOM_STATE_UPDATE, (roomData) => {
       setRoom(roomData);
-      if (roomData.status === 'playing' && roomData.gameOver) {
-        window.localStorage.removeItem(roomStorageKey);
-      } else {
-        window.localStorage.setItem(roomStorageKey, roomData.id);
-      }
+      persistActiveRoom(roomData);
       setGameState(prev => {
         if (roomData.status !== 'playing') return null;
 
@@ -796,10 +916,7 @@ function App() {
     });
 
     activeSocket.on(EVENTS.GAME_STATE_UPDATE, (stateData) => {
-      setGameState(stateData);
-      if (stateData.gameOver) {
-        window.localStorage.removeItem(roomStorageKey);
-      }
+      setGameState({ ...stateData, receivedAt: Date.now() });
     });
 
     activeSocket.on(EVENTS.ERROR, (error) => {
@@ -807,19 +924,39 @@ function App() {
       pushNotification({
         type: 'error',
         title: 'Błąd ruchu',
-        message: error.message || 'Serwer odrzucił akcję.'
+        message: getHumanMoveErrorMessage(error.message)
       });
     });
 
     return () => {
+      window.clearTimeout(leaveRetryTimer);
+      window.clearInterval(leaveRetryInterval);
       activeSocket.removeAllListeners();
       activeSocket.disconnect();
     };
-  }, [socket, pushNotification]);
+  }, [socket, pushNotification, serverUrl]);
 
   const updateServerUrl = (value) => {
     const nextServerUrl = normalizeServerUrl(value);
     if (nextServerUrl === serverUrl) return;
+
+    const leavingRoomId = room?.id || window.localStorage.getItem(roomStorageKey);
+    if (leavingRoomId) {
+      const intent = createPendingLeaveIntent(leavingRoomId, clientId, {
+        serverUrl,
+        resumeToken: readResumeToken(serverUrl, leavingRoomId, clientId)
+      });
+      writePendingLeave(intent);
+      if (socket?.connected) {
+        socket.timeout(6000).emit(EVENTS.LEAVE_ROOM, intent, (timeoutError, response) => {
+          if (!timeoutError && response?.success) {
+            clearResumeToken(serverUrl, leavingRoomId, clientId);
+            clearPendingGameActionsForSession(leavingRoomId, clientId);
+            clearPendingLeaveAfterAck(intent.actionId);
+          }
+        });
+      }
+    }
 
     if (nextServerUrl === bundledServerUrl) {
       window.localStorage.removeItem(customServerStorageKey);
@@ -854,12 +991,19 @@ function App() {
     socket.emit(EVENTS.CREATE_ROOM, {
       playerName: name,
       clientId,
-      roomName: options.roomName
+      roomName: options.roomName,
+      supportsResumeToken: true
     }, (response) => {
       if (response?.success) {
         setSocketId(clientId);
         setSessionNotice('');
-        window.localStorage.setItem(roomStorageKey, response.room.id);
+        persistActiveRoom(response.room);
+        persistResumeTokenFromAck({
+          serverUrl,
+          roomId: response.room.id,
+          clientId,
+          response
+        });
         setRoom(response.room);
       } else {
         pushNotification({
@@ -880,11 +1024,24 @@ function App() {
       });
       return;
     }
-    socket.emit(EVENTS.JOIN_ROOM, { playerName: name, roomId, clientId }, (response) => {
+    const resumeToken = readResumeToken(serverUrl, roomId, clientId);
+    socket.emit(EVENTS.JOIN_ROOM, {
+      playerName: name,
+      roomId,
+      clientId,
+      supportsResumeToken: true,
+      ...(resumeToken ? { resumeToken } : {})
+    }, (response) => {
       if (response?.success) {
         setSocketId(clientId);
         setSessionNotice('');
-        window.localStorage.setItem(roomStorageKey, response.room.id);
+        persistActiveRoom(response.room);
+        persistResumeTokenFromAck({
+          serverUrl,
+          roomId: response.room.id,
+          clientId,
+          response
+        });
         setRoom(response.room);
       } else {
         pushNotification({
@@ -898,8 +1055,21 @@ function App() {
 
   const handleLeaveRoom = () => {
     const leavingRoomId = room?.id || window.localStorage.getItem(roomStorageKey);
-    if (socket?.connected && leavingRoomId) {
-      socket.emit(EVENTS.LEAVE_ROOM, { roomId: leavingRoomId, clientId }, () => {});
+    if (leavingRoomId) {
+      const intent = createPendingLeaveIntent(leavingRoomId, clientId, {
+        serverUrl,
+        resumeToken: readResumeToken(serverUrl, leavingRoomId, clientId)
+      });
+      writePendingLeave(intent);
+      if (socket?.connected) {
+        socket.timeout(6000).emit(EVENTS.LEAVE_ROOM, intent, (timeoutError, response) => {
+          if (!timeoutError && response?.success) {
+            clearResumeToken(serverUrl, leavingRoomId, clientId);
+            clearPendingGameActionsForSession(leavingRoomId, clientId);
+            clearPendingLeaveAfterAck(intent.actionId);
+          }
+        });
+      }
     }
     window.localStorage.removeItem(roomStorageKey);
     setSocketId(clientId);
@@ -908,8 +1078,47 @@ function App() {
     setSessionNotice('Sesja porzucona.');
   };
 
+  const handleRefreshSession = useCallback(async () => {
+    const result = await requestSessionRefresh({
+      socket,
+      roomId: room?.id || window.localStorage.getItem(roomStorageKey),
+      clientId,
+      resumeToken: readResumeToken(
+        serverUrl,
+        room?.id || window.localStorage.getItem(roomStorageKey),
+        clientId
+      )
+    });
+
+    if (!result.success) {
+      pushNotification({
+        type: 'error',
+        title: TABLE_RETURN_COPY.title,
+        message: TABLE_RETURN_COPY.failure
+      });
+      return false;
+    }
+
+    persistActiveRoom(result.room);
+    persistResumeTokenFromAck({
+      serverUrl,
+      roomId: result.room.id,
+      clientId,
+      response: result
+    });
+    setSocketId(clientId);
+    setRoom(result.room);
+    setSessionNotice('');
+    pushNotification({
+      type: 'info',
+      title: TABLE_RETURN_COPY.title,
+      message: TABLE_RETURN_COPY.success
+    });
+    return true;
+  }, [pushNotification, room?.id, serverUrl, socket]);
+
   useEffect(() => {
-    if (!nativeGameBridge || room?.status !== 'playing' || !gameState || !room?.id) return;
+    if (!useNativeTable || !nativeGameBridge || room?.status !== 'playing' || !gameState || !room?.id) return;
 
     const launchKey = `${room.id}:${room.gameNumber || gameState.gameNumber || 'current'}`;
     if (nativeLaunchKeyRef.current === launchKey) return;
@@ -921,36 +1130,63 @@ function App() {
       serverUrl,
       roomId: room.id,
       playerName,
-      clientId
+      clientId,
+      resumeToken: readResumeToken(serverUrl, room.id, clientId)
     }).then((result) => {
       nativeLaunchKeyRef.current = '';
       if (result?.returnLobby) {
-        socket.emit(EVENTS.RECONNECT_SESSION, { roomId: room.id, clientId }, (response) => {
+        const payload = resumeSessionPayload({ serverUrl, roomId: room.id, clientId });
+        socket.emit(EVENTS.RECONNECT_SESSION, payload, (response) => {
           if (response?.success && response.room) {
-            window.localStorage.setItem(roomStorageKey, response.room.id);
+            persistActiveRoom(response.room);
+            persistResumeTokenFromAck({
+              serverUrl,
+              roomId: response.room.id,
+              clientId,
+              response
+            });
             setSocketId(clientId);
             setRoom(response.room);
             setGameState(null);
             setSessionNotice('');
             return;
           }
-          window.localStorage.removeItem(roomStorageKey);
-          setSocketId(clientId);
-          setRoom(null);
-          setGameState(null);
-          setSessionNotice('Stół jest zakończony albo niedostępny.');
+          if (isTerminalRoomReconnectFailure(response)) {
+            window.localStorage.removeItem(roomStorageKey);
+            clearResumeToken(serverUrl, room.id, clientId);
+            clearPendingGameActionsForSession(room.id, clientId);
+            setSocketId(clientId);
+            setRoom(null);
+            setGameState(null);
+            setSessionNotice('Stół jest zakończony albo niedostępny.');
+          } else {
+            setSessionNotice(response?.error || 'Nie udało się wrócić do lobby.');
+          }
         });
         return;
       }
       if (result?.leftRoom) {
         window.localStorage.removeItem(roomStorageKey);
+        clearResumeToken(serverUrl, room.id, clientId);
+        clearPendingGameActionsForSession(room.id, clientId);
         setSocketId(clientId);
         setRoom(null);
         setGameState(null);
         setSessionNotice('Sesja porzucona.');
         return;
       }
-      socket.emit(EVENTS.LEAVE_ROOM, { roomId: room.id, clientId }, () => {});
+      const intent = createPendingLeaveIntent(room.id, clientId, {
+        serverUrl,
+        resumeToken: readResumeToken(serverUrl, room.id, clientId)
+      });
+      writePendingLeave(intent);
+      socket.emit(EVENTS.LEAVE_ROOM, intent, (response) => {
+        if (response?.success) {
+          clearResumeToken(serverUrl, room.id, clientId);
+          clearPendingGameActionsForSession(room.id, clientId);
+          clearPendingLeaveAfterAck(intent.actionId);
+        }
+      });
       window.localStorage.removeItem(roomStorageKey);
       setSocketId(clientId);
       setRoom(null);
@@ -1014,14 +1250,14 @@ function App() {
   if (room.status === 'lobby') {
     return (
       <>
-        <Lobby socket={socket} room={room} socketId={socketId} onLeaveRoom={handleLeaveRoom} />
+        <Lobby socket={socket} room={room} socketId={socketId} serverUrl={serverUrl} onLeaveRoom={handleLeaveRoom} />
         {notificationLayer}
       </>
     );
   }
 
   if (room.status === 'playing' && gameState) {
-    if (isAndroidNativeShell) {
+    if (useNativeTable) {
       return (
         <>
           <NativeTableOverlay
@@ -1039,7 +1275,14 @@ function App() {
 
     return (
       <>
-        <Game socket={socket} room={room} gameState={gameState} socketId={socketId} onLeaveRoom={handleLeaveRoom} />
+        <Game
+          socket={socket}
+          room={room}
+          gameState={gameState}
+          socketId={socketId}
+          onLeaveRoom={handleLeaveRoom}
+          onRefreshSession={handleRefreshSession}
+        />
         {notificationLayer}
       </>
     );

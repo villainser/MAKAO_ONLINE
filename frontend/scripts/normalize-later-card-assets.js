@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdir, stat } from 'node:fs/promises';
+import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,54 @@ const sourceDir = process.env.LATER_CARD_SOURCE
   ? path.resolve(process.env.LATER_CARD_SOURCE)
   : defaultSourceDir;
 const outputDir = path.join(projectRoot, 'public', 'cards', 'later');
+
+const numberCardPattern = /^(\d+)-(hearts|diamonds|clubs|spades)\.webp$/;
+
+const suitStyle = {
+  hearts: { symbol: '&#9829;', color: theme.cards.redSuit },
+  diamonds: { symbol: '&#9830;', color: theme.cards.redSuit },
+  clubs: { symbol: '&#9827;', color: theme.cards.blackSuit },
+  spades: { symbol: '&#9824;', color: theme.cards.blackSuit }
+};
+
+const allTargetSuits = ['hearts', 'diamonds', 'clubs', 'spades'];
+
+const allSuitCorrections = (rank, correction) => Object.fromEntries(
+  allTargetSuits.map(suit => [`${rank}-${suit}`, correction])
+);
+
+const numberCardCorrections = {
+  ...allSuitCorrections('3', {
+    addPips: [[256, 218, 60, 0]]
+  }),
+  ...allSuitCorrections('7', {
+    addPips: [[256, 276, 58, 0]]
+  }),
+  ...allSuitCorrections('8', {
+    addPips: [[256, 646, 76, 180]]
+  }),
+  '6-hearts': {
+    clearPatches: [[154, 680, 126, 120], [358, 680, 126, 120]]
+  },
+  '6-spades': {
+    clearPatches: [[154, 680, 126, 120], [358, 680, 126, 120]]
+  },
+  '9-hearts': {
+    clearPatches: [[256, 150, 132, 132, '#fbfafb'], [256, 653, 132, 132, '#fbfafb']]
+  },
+  '9-diamonds': {
+    clearPatches: [[256, 150, 132, 132, '#fbfafb']]
+  },
+  '9-clubs': {
+    addPips: [[256, 514, 70, 180]]
+  },
+  '9-spades': {
+    clearPatches: [[256, 150, 132, 132, '#fbfafb'], [256, 653, 132, 132, '#fbfafb']]
+  },
+  '10-clubs': {
+    clearPatches: [[256, 292, 92, 92, '#e7f6ff']]
+  }
+};
 
 const suits = {
   kier: 'hearts',
@@ -40,12 +88,27 @@ const fileMap = [
   ['Bubu_AS/as_pik.png', 'ace-spades.webp']
 ];
 
-function run(command, args) {
-  const result = spawnSync(command, args, { stdio: 'pipe' });
+function run(command, args, options = {}) {
+  const result = spawnSync(command, args, { stdio: 'pipe', input: options.input });
   if (result.status !== 0) {
     throw new Error(`${command} failed: ${result.stderr.toString().trim()}`);
   }
   return result.stdout.toString();
+}
+
+function getNumberCardMeta(outputName) {
+  const match = outputName.match(numberCardPattern);
+  if (!match) return null;
+
+  const rank = match[1];
+  const suit = match[2];
+  const correction = numberCardCorrections[`${rank}-${suit}`];
+  if (!correction) return null;
+
+  return {
+    correction,
+    suit
+  };
 }
 
 function getNormalizeOptions(sourceRelativePath) {
@@ -77,6 +140,60 @@ async function assertSourceExists() {
     if (!sourceStat.isDirectory()) throw new Error();
   } catch {
     throw new Error(`Missing source dir: ${sourceDir}. Extract later_asset.zip to ../source-assets first or set LATER_CARD_SOURCE.`);
+  }
+}
+
+function renderNumberOverlay({ correction, suit }) {
+  const { width, height, faceColor } = theme.cards;
+  const style = suitStyle[suit];
+  const patchMarkup = (correction.clearPatches || []).map(([x, y, boxWidth, boxHeight, fillColor = faceColor]) => {
+    const halfWidth = Math.round(boxWidth / 2);
+    const halfHeight = Math.round(boxHeight / 2);
+    const rx = Math.round(Math.min(boxWidth, boxHeight) * 0.35);
+
+    return `<rect x="${x - halfWidth}" y="${y - halfHeight}" width="${boxWidth}" height="${boxHeight}" rx="${rx}" fill="${fillColor}"/>`;
+  }).join('\n      ');
+  const pipMarkup = (correction.addPips || []).map(([x, y, size, rotation]) => {
+    const transform = rotation
+      ? ` transform="rotate(${rotation} ${x} ${y})"`
+      : '';
+
+    return `<text x="${x}" y="${y}"${transform} fill="${style.color}" stroke="${faceColor}" stroke-width="4" paint-order="stroke fill" text-anchor="middle" dominant-baseline="central" font-family="DejaVu Sans, Arial, sans-serif" font-size="${size}" font-weight="900">${style.symbol}</text>`;
+  }).join('\n      ');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <g>
+      ${patchMarkup}
+      ${pipMarkup}
+  </g>
+</svg>`;
+}
+
+async function applyNumberOverlay(outputPath, cardMeta) {
+  const parsedPath = path.parse(outputPath);
+  const overlayPath = path.join(parsedPath.dir, `.tmp-${parsedPath.name}-overlay.svg`);
+  const composedPath = path.join(parsedPath.dir, `.tmp-${parsedPath.name}${parsedPath.ext}`);
+
+  await writeFile(overlayPath, renderNumberOverlay(cardMeta), 'utf8');
+
+  try {
+    run('magick', [
+      outputPath,
+      '(',
+      '-background', 'none',
+      overlayPath,
+      ')',
+      '-compose', 'Over',
+      '-composite',
+      '-define', 'webp:method=6',
+      '-quality', '90',
+      composedPath
+    ]);
+    await rename(composedPath, outputPath);
+  } finally {
+    await rm(overlayPath, { force: true });
+    await rm(composedPath, { force: true });
   }
 }
 
@@ -161,6 +278,10 @@ async function main() {
     const sourcePath = path.join(sourceDir, sourceRelativePath);
     const outputPath = path.join(outputDir, outputName);
     normalizeCard(sourcePath, outputPath, getNormalizeOptions(sourceRelativePath));
+    const numberCardMeta = getNumberCardMeta(outputName);
+    if (numberCardMeta) {
+      await applyNumberOverlay(outputPath, numberCardMeta);
+    }
   }
 
   console.log(`Normalized ${fileMap.length} later-card assets into ${path.relative(projectRoot, outputDir)}`);

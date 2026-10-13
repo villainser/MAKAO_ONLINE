@@ -1,77 +1,53 @@
-# React + Vite
+# Interfejs Makao
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React odpowiada za grę w przeglądarce, menu, lobby i nakładki Androida.
+Capacitor łączy interfejs webowy z natywnym stołem LibGDX w
+`android/app/src/main/java/`. Instrukcje uruchomienia i budowania znajdują się
+w [głównym README](../README.md).
 
-## Makao visual/audio assets
+## Grafika i dźwięk
 
-The card, audio, and atlas assets are generated locally from `theme.config.js`:
+Gotowe karty, dźwięki i atlasy są zapisane w repozytorium. Zwykłe budowanie strony
+lub APK korzysta z nich bez ponownego generowania. Konfigurację zasobów zawiera
+[`theme.config.js`](theme.config.js).
 
-```bash
-npm run assets:cards
-npm run assets:cards:svg
-npm run assets:audio
-npm run assets:atlas
-npm run assets:native
-npm run assets:all
-```
+Poniższe polecenia wykonuje się z katalogu `frontend/`:
 
-- `assets:cards` normalizes the hand-made/AI-assisted source PNGs from `../source-assets/later_asset` into `public/cards/later`.
-- `assets:cards:svg` keeps the older fully programmatic SVG generator available.
-- SFX are generated as `.ogg` and `.mp3` files in `public/audio`; the runtime AudioManager also synthesizes Web Audio fallbacks if files are missing.
-- Atlas metadata and SVG sheets are generated in `public/atlases`.
-- `assets:native` exports LibGDX-ready files to `android/app/src/main/assets/native`: `cards/cards.png`, `cards/cards.atlas`, `cards/cards.json`, and `audio/*.ogg`.
+| Polecenie | Działanie |
+| --- | --- |
+| `npm run assets:cards` | Normalizacja źródłowych grafik kart do `public/cards/later/` |
+| `npm run assets:cards:svg` | Generowanie alternatywnych kart SVG |
+| `npm run assets:audio` | Generowanie efektów dźwiękowych OGG i MP3 |
+| `npm run assets:atlas` | Generowanie metadanych atlasów i arkuszy SVG |
+| `npm run assets:native` | Eksport atlasów i dźwięków dla LibGDX |
+| `npm run assets:all` | Uruchomienie całego procesu generowania |
 
-## Native LibGDX asset contract
+Normalizacja kart wymaga lokalnych plików PNG w `../source-assets/later_asset/`.
+Materiały źródłowe nie są częścią repozytorium. Nie uruchamiaj `assets:all` jako
+kroku instalacji projektu; do budowania wystarczają gotowe zasoby.
 
-The native Android client should treat cards the same way Slay the Spire treats its card art: cards are static `TextureRegion`s loaded from a LibGDX `.atlas`, while motion is done in code by changing position, rotation, scale, tint/alpha, and draw order. Do not expect baked card animation frames in the card atlas.
+`AudioManager` korzysta z plików w `public/audio/`. Jeżeli są niedostępne, może
+syntetyzować efekty za pomocą Web Audio.
 
-Load the card art from:
+## Atlasy Androida
 
-```text
-android/app/src/main/assets/native/cards/cards.atlas
-```
+LibGDX ładuje karty z `android/app/src/main/assets/native/cards/cards.atlas`.
+Każda karta jest statycznym regionem tekstury. `MakaoGdxGame` animuje jej pozycję,
+obrót, skalę i przezroczystość; atlas nie zawiera klatek animacji.
 
-The atlas is intentionally split into multiple PNG pages to stay under common Android texture limits:
+Atlas odwołuje się do trzech plików, które muszą pozostać w tym samym katalogu:
 
-```text
-cards.png   2080x3880
-cards2.png  2080x3880
-cards3.png  2080x3104
-```
+| Plik | Rozmiar |
+| --- | --- |
+| `cards.png` | 2080 × 3880 px |
+| `cards2.png` | 2080 × 3880 px |
+| `cards3.png` | 2080 × 3104 px |
 
-Keep all referenced page PNGs next to `cards.atlas`. The first page remains `cards.png` for compatibility with the original native export request, but `cards.atlas` references all pages.
+Region karty ma rozmiar 512 × 768 px i 4 px powielonej krawędzi, ograniczającej
+przenikanie sąsiednich tekstur przy filtrowaniu. Nazwy regionów, np. `2-hearts`,
+`queen-spades`, `ace-diamonds`, `joker-a` i `back`, są używane przez
+`TextureAtlas.findRegion(name)`.
 
-Each card region is a fixed `512x768` frame with 4 px edge-extruded padding around the region to avoid Linear-filter bleeding between cards. Region names are stable and should be loaded with `TextureAtlas.findRegion(name)`, for example:
-
-```text
-2-hearts
-queen-spades
-ace-diamonds
-joker-a
-joker-b
-joker-d
-back
-```
-
-For native animation, use the region as a sprite and animate transforms in `SpriteBatch`/scene code. Existing `MakaoGdxGame` flight-style movement (`x/y`, angle, scale, arc/easing) matches this direction; replace procedural card textures with atlas regions instead of replacing the animation system.
-
-Audio for native lives under:
-
-```text
-android/app/src/main/assets/native/audio/*.ogg
-```
-
-The expected sound ids are `card_draw`, `card_throw`, `card_land`, `deck_shuffle`, `card_function`, `turn_ping`, `makao`, `round_win`, and `illegal_move`.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Dźwięki natywne znajdują się w `android/app/src/main/assets/native/audio/`.
+Identyfikatory efektów: `card_draw`, `card_throw`, `card_land`, `deck_shuffle`,
+`card_function`, `turn_ping`, `makao`, `round_win` i `illegal_move`.

@@ -14,6 +14,11 @@ import {
   TURN_TIME_LIMIT_OPTIONS
 } from "./shared/constants.js";
 import { GameEngine } from "./GameEngine.js";
+import { Buffer } from "node:buffer";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { mkdir, open, rename } from "node:fs/promises";
 
 const DEFAULT_SETTINGS = {
   deckCount: 1,
@@ -30,12 +35,38 @@ const DEFAULT_SETTINGS = {
   turnTimeLimitSeconds: ROOM_LIMITS.DEFAULT_TURN_LIMIT_SECONDS,
   disconnectPolicy: DISCONNECT_POLICIES.HOST_DECIDES,
   firstPlayerMode: FIRST_PLAYER_MODES.RANDOM_EACH_GAME,
-  firstPlayerId: null
+  firstPlayerId: null,
+  allowMultipleCards: true
 };
 
 const ROOM_AUDIT_LOG_LIMIT = 300;
 const COMPLETED_GAME_LOG_LIMIT = 20;
 const PUBLIC_DISCARD_PILE_TAIL_COUNT = 2;
+const ACTION_RECEIPT_LIMIT = 200;
+const REJECTED_AUDIT_DETAILS_MAX_BYTES = 4096;
+const REJECTED_AUDIT_ERROR_MAX_BYTES = 320;
+const REJECTED_AUDIT_ID_MAX_BYTES = 120;
+const REJECTED_AUDIT_VALUE_MAX_BYTES = 32;
+const REJECTED_AUDIT_CARD_ID_LIMIT = 24;
+const REJECTED_AUDIT_JOKER_LIMIT = 6;
+const DEFAULT_OFFLINE_ROOM_TTL_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_MAX_OFFLINE_ROOMS_PER_SWEEP = 50;
+const RELIABLE_GAME_ACTIONS = new Set([
+  EVENTS.PLAY_CARDS,
+  EVENTS.DRAW_CARD,
+  EVENTS.ACCEPT_SKIP,
+  EVENTS.DECLARE_MAKAO,
+  EVENTS.CATCH_MAKAO,
+  EVENTS.PASS_TURN,
+  EVENTS.PAUSE_GAME,
+  EVENTS.RESUME_GAME
+]);
+const CONNECTION_ONLY_HISTORY_TYPES = new Set([
+  "player_disconnected",
+  "player_reconnected",
+  "game_paused_disconnect",
+  "game_resumed_disconnect"
+]);
 
 export class RoomManager {
   constructor(io, options = {}) {
@@ -43,10 +74,31 @@ export class RoomManager {
     this.rooms = new Map(); // roomId -> Room
     this.playerRooms = new Map(); // socketId -> roomId
     this.socketPlayers = new Map(); // socketId -> stable playerId
+    this.pendingResumeTokens = new Map(); // socketId -> one-time private ACK value
+    this.pendingReliableActions = new Map(); // room/player/action -> in-flight durability result
+    this.durableActionReceipts = new WeakSet();
+    this.stateFile = options.stateFile || null;
+    this.offlineRoomTtlMs = Number.isFinite(options.offlineRoomTtlMs)
+      ? Math.max(0, options.offlineRoomTtlMs)
+      : DEFAULT_OFFLINE_ROOM_TTL_MS;
+    this.maxOfflineRoomsPerSweep = Number.isFinite(options.maxOfflineRoomsPerSweep)
+      ? Math.max(1, Math.trunc(options.maxOfflineRoomsPerSweep))
+      : DEFAULT_MAX_OFFLINE_ROOMS_PER_SWEEP;
+    this.persistenceRequestedRevision = 0;
+    this.persistenceSettledRevision = 0;
+    this.persistencePersistedRevision = 0;
+    this.persistenceLastError = null;
+    this.persistenceDrainPromise = null;
     this.turnTimerMonitor = null;
 
+    this.loadPersistedRooms();
+
     if (options.enableTurnTimerMonitor !== false) {
-      this.turnTimerMonitor = setInterval(() => this.checkExpiredTurnTimers(), options.turnTimerMonitorMs || 1000);
+      this.turnTimerMonitor = setInterval(() => {
+        const now = Date.now();
+        this.checkExpiredTurnTimers(now);
+        this.cleanupExpiredOfflineRooms(now);
+      }, options.turnTimerMonitorMs || 1000);
       this.turnTimerMonitor.unref?.();
     }
   }
@@ -90,14 +142,222 @@ export class RoomManager {
       : FIRST_PLAYER_MODES.RANDOM_EACH_GAME;
   }
 
-  close() {
+  async close() {
     if (this.turnTimerMonitor) {
       clearInterval(this.turnTimerMonitor);
       this.turnTimerMonitor = null;
     }
+    const revision = this.persistRooms();
+    await this.flushPersistence(revision);
+  }
+
+  loadPersistedRooms() {
+    if (!this.stateFile || !existsSync(this.stateFile)) return;
+
+    try {
+      const stored = JSON.parse(readFileSync(this.stateFile, "utf8"));
+      const rooms = Array.isArray(stored?.rooms) ? stored.rooms : [];
+      for (const persistedRoom of rooms) {
+        if (!persistedRoom?.id || !Array.isArray(persistedRoom.players)) continue;
+        const room = {
+          ...persistedRoom,
+          settings: {
+            ...DEFAULT_SETTINGS,
+            ...(persistedRoom.settings && typeof persistedRoom.settings === "object"
+              ? persistedRoom.settings
+              : {}),
+            allowMultipleCards: persistedRoom.settings?.allowMultipleCards !== false
+          },
+          players: persistedRoom.players.map(player => ({
+            ...player,
+            socketId: null,
+            isOnline: false,
+            isReady: false
+          })),
+          actionReceipts: Array.isArray(persistedRoom.actionReceipts)
+            ? persistedRoom.actionReceipts.slice(-ACTION_RECEIPT_LIMIT)
+            : [],
+          lastActivityAt: Number.isFinite(persistedRoom.lastActivityAt)
+            ? persistedRoom.lastActivityAt
+            : (Number.isFinite(stored.savedAt) ? stored.savedAt : Date.now()),
+          allOfflineSince: Number.isFinite(persistedRoom.allOfflineSince)
+            ? persistedRoom.allOfflineSince
+            : (Number.isFinite(stored.savedAt) ? stored.savedAt : Date.now())
+        };
+        for (const receipt of room.actionReceipts) {
+          this.durableActionReceipts.add(receipt);
+        }
+
+        if (room.gameState) {
+          room.gameState.settings = {
+            ...room.settings,
+            ...(room.gameState.settings && typeof room.gameState.settings === "object"
+              ? room.gameState.settings
+              : {}),
+            allowMultipleCards: room.gameState.settings?.allowMultipleCards === undefined
+              ? room.settings.allowMultipleCards
+              : room.gameState.settings.allowMultipleCards !== false
+          };
+        }
+
+        if (room.status === "playing" && room.gameState && !room.gameState.gameOver) {
+          const currentPlayerId = GameEngine.getCurrentPlayerId(room.gameState);
+          room.gameState.paused = Boolean(currentPlayerId);
+          room.gameState.pauseReason = currentPlayerId ? "disconnect" : null;
+          room.gameState.pausedPlayerId = currentPlayerId || null;
+          room.gameState.pausedAt = currentPlayerId ? Date.now() : null;
+          GameEngine.clearTurnEvents(room.gameState);
+          if (currentPlayerId) {
+            GameEngine.addTurnEvent(room.gameState, {
+              type: "game_paused_disconnect",
+              playerId: currentPlayerId
+            });
+          }
+        }
+
+        this.rooms.set(room.id, room);
+      }
+    } catch (err) {
+      console.error(`Nie udało się odtworzyć pokojów z ${this.stateFile}:`, err);
+    }
+  }
+
+  serializeRoom(room) {
+    return {
+      ...room,
+      players: room.players.map(player => ({
+        ...player,
+        socketId: null,
+        isOnline: false
+      })),
+      actionReceipts: (room.actionReceipts || []).slice(-ACTION_RECEIPT_LIMIT)
+    };
+  }
+
+  persistRooms() {
+    if (!this.stateFile) return 0;
+    this.persistenceRequestedRevision += 1;
+    this.schedulePersistenceDrain();
+    return this.persistenceRequestedRevision;
+  }
+
+  schedulePersistenceDrain() {
+    if (!this.stateFile || this.persistenceDrainPromise) return;
+    this.persistenceDrainPromise = new Promise(resolveDrain => setImmediate(resolveDrain))
+      .then(() => this.drainPersistenceQueue())
+      .finally(() => {
+        this.persistenceDrainPromise = null;
+        if (this.persistenceSettledRevision < this.persistenceRequestedRevision) {
+          this.schedulePersistenceDrain();
+        }
+      });
+  }
+
+  async drainPersistenceQueue() {
+    if (this.persistenceSettledRevision >= this.persistenceRequestedRevision) return;
+
+    // One drain promise represents one coalesced durable batch. Later revisions
+    // get a new promise so a waiter for this batch is never held by newer work.
+    const revision = this.persistenceRequestedRevision;
+    try {
+      const payload = JSON.stringify({
+        schemaVersion: 1,
+        savedAt: Date.now(),
+        rooms: [...this.rooms.values()].map(room => this.serializeRoom(room))
+      });
+      await this.writePersistenceSnapshot(payload);
+      this.persistencePersistedRevision = revision;
+      this.persistenceLastError = null;
+    } catch (err) {
+      this.persistenceLastError = { revision, error: err };
+      console.error(`Nie udało się zapisać pokojów do ${this.stateFile}:`, err);
+    } finally {
+      this.persistenceSettledRevision = revision;
+    }
+  }
+
+  async writePersistenceSnapshot(payload) {
+    const temporaryFile = `${this.stateFile}.tmp`;
+    await mkdir(dirname(this.stateFile), { recursive: true });
+    const file = await open(temporaryFile, "w", 0o600);
+    try {
+      await file.chmod(0o600);
+      await file.writeFile(payload, { encoding: "utf8" });
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    await rename(temporaryFile, this.stateFile);
+    if (process.platform !== "win32") {
+      const directory = await open(dirname(this.stateFile), "r");
+      try {
+        await directory.sync();
+      } finally {
+        await directory.close();
+      }
+    }
+  }
+
+  async flushPersistence(targetRevision = this.persistenceRequestedRevision) {
+    if (!this.stateFile || !targetRevision) return;
+    while (this.persistenceSettledRevision < targetRevision) {
+      this.schedulePersistenceDrain();
+      await this.persistenceDrainPromise;
+    }
+    if (this.persistencePersistedRevision < targetRevision) {
+      const error = new Error("Nie udało się trwale zapisać stanu gry.", {
+        cause: this.persistenceLastError?.error
+      });
+      error.code = "PERSISTENCE_FAILED";
+      error.persistenceAttempted = true;
+      throw error;
+    }
+  }
+
+  markRoomActivity(room, now = Date.now()) {
+    if (!room) return;
+    room.lastActivityAt = now;
+    const hasOnlinePlayer = room.players.some(player => player.isOnline && player.socketId);
+    if (hasOnlinePlayer) {
+      room.allOfflineSince = null;
+    } else if (!Number.isFinite(room.allOfflineSince)) {
+      room.allOfflineSince = now;
+    }
+  }
+
+  cleanupExpiredOfflineRooms(now = Date.now()) {
+    if (this.offlineRoomTtlMs <= 0) return 0;
+    let removed = 0;
+    for (const [roomId, room] of this.rooms.entries()) {
+      if (removed >= this.maxOfflineRoomsPerSweep) break;
+      if (room.players.some(player => player.isOnline && player.socketId)) {
+        room.allOfflineSince = null;
+        continue;
+      }
+      if (!Number.isFinite(room.allOfflineSince)) room.allOfflineSince = now;
+      const lastRelevantActivity = Math.max(
+        Number(room.allOfflineSince) || 0,
+        Number(room.lastActivityAt) || 0
+      );
+      if (now - lastRelevantActivity < this.offlineRoomTtlMs) continue;
+
+      for (const [socketId, mappedRoomId] of this.playerRooms.entries()) {
+        if (mappedRoomId !== roomId) continue;
+        this.playerRooms.delete(socketId);
+        this.socketPlayers.delete(socketId);
+        this.pendingResumeTokens.delete(socketId);
+      }
+      this.rooms.delete(roomId);
+      removed += 1;
+    }
+    if (removed > 0) this.persistRooms();
+    return removed;
   }
 
   sanitizeSettings(settings = {}, room = null) {
+    settings = settings && typeof settings === "object" && !Array.isArray(settings)
+      ? settings
+      : {};
     const current = room?.settings || DEFAULT_SETTINGS;
     const next = {};
 
@@ -112,6 +372,10 @@ export class RoomManager {
 
     if (Object.hasOwn(settings, "useJokers")) {
       next.useJokers = Boolean(settings.useJokers);
+    }
+
+    if (Object.hasOwn(settings, "allowMultipleCards")) {
+      next.allowMultipleCards = settings.allowMultipleCards !== false;
     }
 
     if (Object.hasOwn(settings, "queenVariant")) {
@@ -206,6 +470,39 @@ export class RoomManager {
     return next;
   }
 
+  hashResumeToken(token) {
+    return createHash("sha256").update(token).digest("hex");
+  }
+
+  issueResumeToken(player, socketId) {
+    const resumeToken = randomBytes(32).toString("base64url");
+    player.resumeTokenHash = this.hashResumeToken(resumeToken);
+    player.resumeTokenRequired = true;
+    this.pendingResumeTokens.set(socketId, resumeToken);
+    return resumeToken;
+  }
+
+  takeResumeToken(socketId) {
+    const resumeToken = this.pendingResumeTokens.get(socketId) || null;
+    this.pendingResumeTokens.delete(socketId);
+    return resumeToken;
+  }
+
+  hasValidResumeToken(player, resumeToken) {
+    if (!player?.resumeTokenHash || typeof resumeToken !== "string" || !resumeToken) return false;
+    const expected = Buffer.from(player.resumeTokenHash, "hex");
+    const received = Buffer.from(this.hashResumeToken(resumeToken), "hex");
+    return expected.length === received.length && expected.length > 0 && timingSafeEqual(expected, received);
+  }
+
+  assertResumeToken(player, resumeToken) {
+    if (player?.resumeTokenHash && !this.hasValidResumeToken(player, resumeToken)) {
+      const error = new Error("Missing or invalid resume token.");
+      error.code = "INVALID_RESUME_TOKEN";
+      throw error;
+    }
+  }
+
   getRecommendedDeckCount(room) {
     const readyCount = room.players.filter(player => player.isReady).length || room.players.length;
     if (readyCount <= 4) return 1;
@@ -291,13 +588,21 @@ export class RoomManager {
       ...DEFAULT_SETTINGS,
       ...this.sanitizeSettings(options.settings || {})
     };
+    const hostPlayer = {
+      id: playerId,
+      socketId: hostSocketId,
+      name: playerName,
+      isReady: true,
+      isOnline: true
+    };
+    if (options.supportsResumeToken === true) {
+      this.issueResumeToken(hostPlayer, hostSocketId);
+    }
     const room = {
       id: roomId,
       name: this.normalizeRoomName(options.roomName, `${playerName || "Gracz"} - Makao`),
       hostId: playerId,
-      players: [
-        { id: playerId, socketId: hostSocketId, name: playerName, isReady: true, isOnline: true }
-      ],
+      players: [hostPlayer],
       settings: initialSettings,
       gameNumber: 0,
       lastFirstPlayerId: null,
@@ -309,9 +614,12 @@ export class RoomManager {
       lastStatsRecordedGameNumber: null,
       status: "lobby", // 'lobby' | 'playing'
       gameState: null,
+      actionReceipts: [],
       adminLog: [],
       auditLog: [],
-      completedGameLogs: []
+      completedGameLogs: [],
+      lastActivityAt: Date.now(),
+      allOfflineSince: null
     };
     
     this.rooms.set(roomId, room);
@@ -324,10 +632,11 @@ export class RoomManager {
         settings: room.settings
       }
     });
+    this.persistRooms();
     return room;
   }
 
-  joinRoom(roomId, socketId, playerName, clientId) {
+  joinRoom(roomId, socketId, playerName, clientId, options = {}) {
     const normalizedRoomId = String(roomId || "").trim().toUpperCase();
     const room = this.rooms.get(normalizedRoomId);
     if (!room) throw new Error("Room not found");
@@ -335,7 +644,7 @@ export class RoomManager {
 
     const existingPlayer = room.players.find(p => p.id === playerId);
     if (existingPlayer) {
-      return this.reconnectPlayer(roomId, socketId, playerId);
+      return this.reconnectPlayer(roomId, socketId, playerId, options);
     }
 
     if (room.status !== "lobby") throw new Error("Game already in progress");
@@ -344,6 +653,9 @@ export class RoomManager {
     }
 
     const newPlayer = { id: playerId, socketId, name: playerName, isReady: false, isOnline: true };
+    if (options.supportsResumeToken === true) {
+      this.issueResumeToken(newPlayer, socketId);
+    }
     room.players.push(newPlayer);
     this.playerRooms.set(socketId, room.id);
     this.socketPlayers.set(socketId, playerId);
@@ -356,17 +668,17 @@ export class RoomManager {
     return room;
   }
 
-  reconnectPlayer(roomId, socketId, clientId) {
+  reconnectPlayer(roomId, socketId, clientId, options = {}) {
     const normalizedRoomId = String(roomId || "").trim().toUpperCase();
     const room = this.rooms.get(normalizedRoomId);
     if (!room) throw new Error("Room not found");
     if (!clientId) throw new Error("Missing client id");
-    if (room.status === "playing" && room.gameState?.gameOver) {
-      throw new Error("Partia w tym pokoju jest już zakończona.");
-    }
 
     const player = room.players.find(p => p.id === clientId);
     if (!player) throw new Error("Player session not found in this room");
+
+    options = options && typeof options === "object" && !Array.isArray(options) ? options : {};
+    this.assertResumeToken(player, options.resumeToken);
 
     if (player.socketId && player.socketId !== socketId) {
       this.releasePlayerSocket(room.id, player);
@@ -375,6 +687,9 @@ export class RoomManager {
     player.isOnline = true;
     this.playerRooms.set(socketId, room.id);
     this.socketPlayers.set(socketId, clientId);
+    if (!player.resumeTokenHash && options.supportsResumeToken === true) {
+      this.issueResumeToken(player, socketId);
+    }
     this.recordRoomAuditLog(room, "connection_log", "player_reconnected", {
       actorPlayerId: clientId,
       details: { roomStatus: room.status }
@@ -398,29 +713,54 @@ export class RoomManager {
       });
     }
 
-    this.broadcastRoomUpdate(room.id);
-    if (room.status === "playing") this.broadcastGameUpdate(room.id);
+    this.ensureOnlineHost(room);
+    this.commitRoomState(room.id, { emitGame: room.status === "playing" });
     return room;
   }
 
-  leaveRoom(socketId) {
-    const roomId = this.playerRooms.get(socketId);
-    const playerId = this.getPlayerId(socketId);
-    this.playerRooms.delete(socketId);
-    this.socketPlayers.delete(socketId);
+  leaveRoom(socketId, payload = {}) {
+    payload = payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+    const mappedRoomId = this.playerRooms.get(socketId);
+    const requestedRoomId = String(payload?.roomId || "").trim().toUpperCase();
+    const roomId = mappedRoomId || requestedRoomId;
+    const playerId = mappedRoomId
+      ? this.getPlayerId(socketId)
+      : (payload?.clientId || this.getPlayerId(socketId));
     if (!roomId) return null;
 
     const room = this.rooms.get(roomId);
-    if (!room) return null;
+    if (!room) {
+      this.playerRooms.delete(socketId);
+      this.socketPlayers.delete(socketId);
+      this.pendingResumeTokens.delete(socketId);
+      this.persistRooms();
+      return null;
+    }
 
     const player = room.players.find(p => p.id === playerId);
     if (!player) return room;
+
+    if (mappedRoomId) {
+      if (player.socketId !== socketId) {
+        this.playerRooms.delete(socketId);
+        this.socketPlayers.delete(socketId);
+        this.pendingResumeTokens.delete(socketId);
+        return room;
+      }
+    } else {
+      this.assertResumeToken(player, payload.resumeToken);
+      // An unmapped leave is only an idempotent retry for an offline membership.
+      // Once a newer socket owns the membership, an old/replayed leave is stale.
+      if (player.socketId || player.isOnline) return room;
+    }
 
     const wasPlaying = room.status === "playing" && room.gameState;
     const gameAlreadyOver = Boolean(wasPlaying && room.gameState.gameOver);
 
     this.releasePlayerSocket(roomId, player);
     player.socketId = null;
+    player.isOnline = false;
+    player.isReady = false;
     this.recordRoomAuditLog(room, "connection_log", "player_left", {
       actorPlayerId: playerId,
       details: { roomStatus: room.status, gameAlreadyOver }
@@ -428,10 +768,17 @@ export class RoomManager {
 
     if (wasPlaying && !gameAlreadyOver) {
       this.clearDisconnectPauseFor(room, playerId);
-      GameEngine.removePlayerFromGame(room.gameState, playerId, { eventType: "player_left" });
+      GameEngine.removePlayerFromGame(room.gameState, playerId, {
+        eventType: "player_left",
+        playerName: player.name
+      });
       GameEngine.recordHistory(room.gameState, "player_left", {
         playerId,
-        details: { reason: "player_left_room" }
+        details: {
+          reason: "player_left_room",
+          playerName: player.name,
+          ...(payload?.actionId ? { actionId: payload.actionId } : {})
+        }
       });
       const previousPlayerIds = room.players.map(p => p.id);
       room.players = room.players.filter(p => p.id !== playerId);
@@ -439,26 +786,29 @@ export class RoomManager {
       if (room.players.length === 0) {
         this.archiveCurrentGameLogs(room, "all_players_left");
         this.rooms.delete(roomId);
+        this.persistRooms();
         return null;
       }
 
       this.transferHostAfterLoss(room, playerId);
-      if (!room.players.some(p => p.id === room.hostId)) {
-        room.hostId = room.players.find(p => p.isOnline)?.id || room.players[0]?.id || null;
-      }
+      this.ensureOnlineHost(room);
       this.reconcileFirstPlayerState(room, { previousPlayerIds });
       this.finalizeGameMutation(roomId, room);
       return room;
     }
 
     if (wasPlaying && gameAlreadyOver) {
-      player.isOnline = false;
-      if (room.hostId === playerId) {
-        const onlineHost = room.players.find(p => p.id !== playerId && p.isOnline);
-        if (onlineHost) room.hostId = onlineHost.id;
+      const previousPlayerIds = room.players.map(p => p.id);
+      room.players = room.players.filter(p => p.id !== playerId);
+      if (room.players.length === 0) {
+        this.archiveCurrentGameLogs(room, "all_players_left_after_game_over");
+        this.rooms.delete(roomId);
+        this.persistRooms();
+        return null;
       }
-      this.broadcastRoomUpdate(roomId);
-      this.broadcastGameUpdate(roomId);
+      this.ensureOnlineHost(room);
+      this.reconcileFirstPlayerState(room, { previousPlayerIds });
+      this.commitRoomState(roomId);
       return room;
     }
 
@@ -466,12 +816,11 @@ export class RoomManager {
     room.players = room.players.filter(p => p.id !== playerId);
     if (room.players.length === 0) {
       this.rooms.delete(roomId);
+      this.persistRooms();
       return null;
     }
 
-    if (room.hostId === playerId) {
-      room.hostId = room.players.find(p => p.isOnline)?.id || room.players[0]?.id || null;
-    }
+    this.ensureOnlineHost(room);
     this.reconcileFirstPlayerState(room, { previousPlayerIds });
     this.broadcastRoomUpdate(roomId);
     return room;
@@ -515,8 +864,23 @@ export class RoomManager {
     if (!player?.socketId) return;
     this.playerRooms.delete(player.socketId);
     this.socketPlayers.delete(player.socketId);
+    this.pendingResumeTokens.delete(player.socketId);
     const liveSocket = this.io.sockets?.sockets?.get?.(player.socketId);
     liveSocket?.leave?.(roomId);
+  }
+
+  ensureOnlineHost(room) {
+    if (!room || room.players.length === 0) return null;
+    const currentHost = room.players.find(player => player.id === room.hostId);
+    const onlinePlayer = room.players.find(player => player.isOnline && player.socketId);
+    if (onlinePlayer && (!currentHost || !currentHost.isOnline || !currentHost.socketId)) {
+      room.hostId = onlinePlayer.id;
+      return onlinePlayer;
+    }
+    if (!currentHost) {
+      room.hostId = onlinePlayer?.id || room.players[0]?.id || null;
+    }
+    return room.players.find(player => player.id === room.hostId) || null;
   }
 
   clearDisconnectPauseFor(room, playerId) {
@@ -590,6 +954,7 @@ export class RoomManager {
   resolveExpiredPauseTimer(roomId, room, now = Date.now()) {
     const state = room?.gameState;
     if (!room || !state?.paused || state.gameOver) return false;
+    if (state.pauseReason !== "disconnect") return false;
     if (state.settings?.disconnectPolicy !== DISCONNECT_POLICIES.AUTO_REMOVE_AFTER_LIMIT) {
       return false;
     }
@@ -599,15 +964,11 @@ export class RoomManager {
     if (!pausedPlayerId || now < deadlineAt) return false;
 
     const targetPlayer = room.players.find(player => player.id === pausedPlayerId);
-    if (targetPlayer) {
-      this.releasePlayerSocket(roomId, targetPlayer);
-    }
+    if (!targetPlayer || targetPlayer.isOnline || targetPlayer.socketId) return false;
+    this.releasePlayerSocket(roomId, targetPlayer);
     const previousPlayerIds = room.players.map(player => player.id);
     room.players = room.players.filter(player => player.id !== pausedPlayerId);
-    if (room.hostId === pausedPlayerId) {
-      const nextHost = room.players.find(player => player.isOnline) || room.players[0];
-      room.hostId = nextHost?.id || null;
-    }
+    this.ensureOnlineHost(room);
     this.reconcileFirstPlayerState(room, { previousPlayerIds });
 
     const pauseReason = state.pauseReason;
@@ -639,8 +1000,7 @@ export class RoomManager {
     this.pauseIfCurrentPlayerOffline(room);
     GameEngine.refreshTurnTimer(state, true);
     this.recordCompletedGameStats(room);
-    this.broadcastRoomUpdate(roomId);
-    this.broadcastGameUpdate(roomId);
+    this.commitRoomState(roomId);
     return true;
   }
 
@@ -650,13 +1010,16 @@ export class RoomManager {
     }
   }
 
-  finalizeGameMutation(roomId, room) {
+  finalizeGameMutation(roomId, room, options = {}) {
     GameEngine.processAutomaticSkipEffects(room.gameState);
     this.pauseIfCurrentPlayerOffline(room);
     GameEngine.refreshTurnTimer(room.gameState);
     this.recordCompletedGameStats(room);
-    this.broadcastRoomUpdate(roomId);
-    this.broadcastGameUpdate(roomId);
+    return this.commitRoomState(roomId, {
+      persist: options.persist !== false,
+      emitRoom: options.emitRoom !== false,
+      emitGame: options.emitGame !== false
+    });
   }
 
   ensureRoomStats(room) {
@@ -764,7 +1127,7 @@ export class RoomManager {
       this.reconcileFirstPlayerState(room, { previousPlayerIds });
 
       let stateVersion = null;
-      if (room.status === "playing" && room.gameState) {
+      if (room.status === "playing" && room.gameState && !room.gameState.gameOver) {
         this.clearDisconnectPauseFor(room, targetPlayerId);
         GameEngine.removePlayerFromGame(room.gameState, targetPlayerId);
         GameEngine.recordHistory(room.gameState, "host_removed_player", {
@@ -783,6 +1146,7 @@ export class RoomManager {
 
       if (room.players.length === 0) {
         this.rooms.delete(roomId);
+        this.persistRooms();
         return;
       }
 
@@ -831,8 +1195,7 @@ export class RoomManager {
         stateVersion
       });
 
-      this.broadcastRoomUpdate(roomId);
-      if (room.status === "playing") this.broadcastGameUpdate(roomId);
+      this.commitRoomState(roomId, { emitGame: room.status === "playing" });
     } catch (err) {
       this.sendError(socketId, err.message);
     }
@@ -845,13 +1208,13 @@ export class RoomManager {
     const playerId = this.getPlayerId(socketId);
     
     if (room && room.hostId === playerId) {
-      const allReady = room.players.every(p => p.isReady);
+      const allReady = room.players.every(p => p.isReady && p.isOnline && p.socketId);
       if (room.players.length < ROOM_LIMITS.MIN_PLAYERS) {
         this.io.to(socketId).emit(EVENTS.ERROR, { message: "Do startu potrzeba co najmniej 2 graczy." });
         return;
       }
       if (!allReady) {
-        this.io.to(socketId).emit(EVENTS.ERROR, { message: "Not all players are ready." });
+        this.io.to(socketId).emit(EVENTS.ERROR, { message: "Not all players are ready and online." });
         return;
       }
       if (room.players.length > room.settings.maxPlayers) {
@@ -859,15 +1222,26 @@ export class RoomManager {
         return;
       }
 
-      room.status = "playing";
       const firstPlayerId = this.resolveStartingPlayerId(room);
-      room.gameNumber = (room.gameNumber || 0) + 1;
-      room.gameState = GameEngine.initializeGame(room.players, {
-        ...room.settings,
-        roomId,
-        firstPlayerId,
-        gameNumber: room.gameNumber
-      });
+      const nextGameNumber = (room.gameNumber || 0) + 1;
+      let gameState;
+      try {
+        gameState = GameEngine.initializeGame(room.players, {
+          ...room.settings,
+          roomId,
+          firstPlayerId,
+          gameNumber: nextGameNumber
+        });
+      } catch (err) {
+        this.io.to(socketId).emit(EVENTS.ERROR, {
+          message: err.message,
+          ...(err.code ? { code: err.code } : {})
+        });
+        return;
+      }
+      room.status = "playing";
+      room.gameNumber = nextGameNumber;
+      room.gameState = gameState;
       this.advanceNextGameFirstPlayer(room, firstPlayerId);
       GameEngine.refreshTurnTimer(room.gameState);
       this.recordRoomAuditLog(room, "room_log", "game_started", {
@@ -881,21 +1255,23 @@ export class RoomManager {
         }
       });
       
-      this.broadcastRoomUpdate(roomId);
-      this.broadcastGameUpdate(roomId);
+      this.commitRoomState(roomId);
     }
   }
 
-  handlePlayCards(socketId, payload) {
+  handlePlayCards(socketId, payload = {}, options = {}) {
     // payload: { cardIds: string[], jokerDeclaration?: any, suitRequest?: string, rankRequest?: string }
     const roomId = this.playerRooms.get(socketId);
     if (!roomId) return;
     const room = this.rooms.get(roomId);
     if (room && room.status === "playing") {
       try {
-        if (this.resolveExpiredTurnTimer(roomId, room)) return;
+        if (!options.skipTimerResolution && this.resolveExpiredTurnTimer(roomId, room)) return;
         if (this.isGamePaused(room, socketId)) return;
         const playerId = this.getPlayerId(socketId);
+        if (room.settings?.allowMultipleCards === false && payload?.cardIds?.length > 1) {
+          throw new Error("W tym pokoju można zagrywać tylko jedną kartę naraz.");
+        }
         this.assertExpectedStateVersion(room.gameState, payload);
         const requestEffectBefore = this.snapshotRequestEffect(room.gameState.activeEffect);
         const playedCards = this.getPublicPlayedCards(room.gameState, playerId, payload);
@@ -903,6 +1279,7 @@ export class RoomManager {
         GameEngine.recordHistory(newState, "play_cards", {
           playerId,
           details: {
+            ...(payload?.actionId ? { actionId: payload.actionId } : {}),
             cardCount: payload?.cardIds?.length || 0,
             playedCards,
             suitRequest: payload?.suitRequest || null,
@@ -911,21 +1288,24 @@ export class RoomManager {
           }
         });
         room.gameState = newState;
-        this.finalizeGameMutation(roomId, room);
+        this.finalizeGameMutation(roomId, room, options);
       } catch (err) {
-        this.recordRejectedGameAction(room, "play_cards", this.getPlayerId(socketId), err, payload);
+        if (!options.suppressRejectedAudit) {
+          this.recordRejectedGameAction(room, "play_cards", this.getPlayerId(socketId), err, payload);
+        }
         this.io.to(socketId).emit(EVENTS.ERROR, { message: err.message });
+        if (options.rethrowErrors) throw err;
       }
     }
   }
 
-  handleDrawCard(socketId) {
+  handleDrawCard(socketId, payload = {}, options = {}) {
     const roomId = this.playerRooms.get(socketId);
     if (!roomId) return;
     const room = this.rooms.get(roomId);
     if (room && room.status === "playing") {
       try {
-        if (this.resolveExpiredTurnTimer(roomId, room)) return;
+        if (!options.skipTimerResolution && this.resolveExpiredTurnTimer(roomId, room)) return;
         if (this.isGamePaused(room, socketId)) return;
         const playerId = this.getPlayerId(socketId);
         const acceptsPenalty = room.gameState.activeEffect?.type === EFFECT_TYPES.DRAW_PENALTY;
@@ -939,6 +1319,7 @@ export class RoomManager {
         GameEngine.recordHistory(newState, "draw_card", {
           playerId,
           details: {
+            ...(payload?.actionId ? { actionId: payload.actionId } : {}),
             drawnCount,
             canPlayDrawnCard: Boolean(newState.hasDrawnCardThisTurn && newState.drawnCardInstanceId),
             ...(acceptsPenalty ? {
@@ -951,70 +1332,66 @@ export class RoomManager {
           }
         });
         room.gameState = newState;
-        this.finalizeGameMutation(roomId, room);
+        this.finalizeGameMutation(roomId, room, options);
       } catch (err) {
-        this.recordRejectedGameAction(room, "draw_card", this.getPlayerId(socketId), err);
+        if (!options.suppressRejectedAudit) {
+          this.recordRejectedGameAction(room, "draw_card", this.getPlayerId(socketId), err);
+        }
         this.io.to(socketId).emit(EVENTS.ERROR, { message: err.message });
+        if (options.rethrowErrors) throw err;
       }
     }
   }
 
-  handleAcceptPenalty(socketId) {
+  handleAcceptPenalty(socketId, payload = {}) {
+    const roomId = this.playerRooms.get(socketId);
+    if (!roomId) return;
+    const room = this.rooms.get(roomId);
+    if (room && room.status === "playing") {
+      const error = new Error("Kartę kary dobieraj po jednej.");
+      error.code = "DRAW_PENALTY_ONE_BY_ONE";
+      this.recordRejectedGameAction(room, "accept_penalty", this.getPlayerId(socketId), error, payload);
+      this.io.to(socketId).emit(EVENTS.ERROR, { message: error.message });
+    }
+  }
+
+  handleAcceptSkip(socketId, payload = {}, options = {}) {
     const roomId = this.playerRooms.get(socketId);
     if (!roomId) return;
     const room = this.rooms.get(roomId);
     if (room && room.status === "playing") {
       try {
-        if (this.resolveExpiredTurnTimer(roomId, room)) return;
-        if (this.isGamePaused(room, socketId)) return;
-        const playerId = this.getPlayerId(socketId);
-        const penaltyAmount = room.gameState.activeEffect?.amount || null;
-        const alreadyDrewPenaltyCard = GameEngine.getPenaltyDrawnCount(room.gameState);
-        const newState = GameEngine.processAcceptPenalty(room.gameState, playerId);
-        GameEngine.recordHistory(newState, "accept_penalty", {
-          playerId,
-          details: { amount: penaltyAmount, drawnCount: Math.max(0, penaltyAmount - alreadyDrewPenaltyCard) }
-        });
-        room.gameState = newState;
-        this.finalizeGameMutation(roomId, room);
-      } catch (err) {
-        this.recordRejectedGameAction(room, "accept_penalty", this.getPlayerId(socketId), err);
-        this.io.to(socketId).emit(EVENTS.ERROR, { message: err.message });
-      }
-    }
-  }
-
-  handleAcceptSkip(socketId) {
-    const roomId = this.playerRooms.get(socketId);
-    if (!roomId) return;
-    const room = this.rooms.get(roomId);
-    if (room && room.status === "playing") {
-      try {
-        if (this.resolveExpiredTurnTimer(roomId, room)) return;
+        if (!options.skipTimerResolution && this.resolveExpiredTurnTimer(roomId, room)) return;
         if (this.isGamePaused(room, socketId)) return;
         const playerId = this.getPlayerId(socketId);
         const skipAmount = room.gameState.activeEffect?.amount || null;
         const newState = GameEngine.processAcceptSkip(room.gameState, playerId);
         GameEngine.recordHistory(newState, "accept_skip", {
           playerId,
-          details: { amount: skipAmount }
+          details: {
+            ...(payload?.actionId ? { actionId: payload.actionId } : {}),
+            amount: skipAmount
+          }
         });
         room.gameState = newState;
-        this.finalizeGameMutation(roomId, room);
+        this.finalizeGameMutation(roomId, room, options);
       } catch (err) {
-        this.recordRejectedGameAction(room, "accept_skip", this.getPlayerId(socketId), err);
+        if (!options.suppressRejectedAudit) {
+          this.recordRejectedGameAction(room, "accept_skip", this.getPlayerId(socketId), err);
+        }
         this.io.to(socketId).emit(EVENTS.ERROR, { message: err.message });
+        if (options.rethrowErrors) throw err;
       }
     }
   }
 
-  handleDeclareMakao(socketId, payload = {}) {
+  handleDeclareMakao(socketId, payload = {}, options = {}) {
     const roomId = this.playerRooms.get(socketId);
     if (!roomId) return;
     const room = this.rooms.get(roomId);
     if (room && room.status === "playing") {
       try {
-        if (this.resolveExpiredTurnTimer(roomId, room)) return;
+        if (!options.skipTimerResolution && this.resolveExpiredTurnTimer(roomId, room)) return;
         if (this.isGamePaused(room, socketId)) return;
         const playerId = this.getPlayerId(socketId);
         this.assertExpectedStateVersion(room.gameState, payload);
@@ -1022,25 +1399,29 @@ export class RoomManager {
         GameEngine.recordHistory(newState, "declare_makao", {
           playerId,
           details: {
+            ...(payload?.actionId ? { actionId: payload.actionId } : {}),
             armed: Boolean(newState.makao?.[playerId]?.armed)
           }
         });
         room.gameState = newState;
-        this.finalizeGameMutation(roomId, room);
+        this.finalizeGameMutation(roomId, room, options);
       } catch (err) {
-        this.recordRejectedGameAction(room, "declare_makao", this.getPlayerId(socketId), err, payload);
+        if (!options.suppressRejectedAudit) {
+          this.recordRejectedGameAction(room, "declare_makao", this.getPlayerId(socketId), err, payload);
+        }
         this.io.to(socketId).emit(EVENTS.ERROR, { message: err.message });
+        if (options.rethrowErrors) throw err;
       }
     }
   }
 
-  handleCatchMakao(socketId, payload) {
+  handleCatchMakao(socketId, payload = {}, options = {}) {
     const roomId = this.playerRooms.get(socketId);
     if (!roomId) return;
     const room = this.rooms.get(roomId);
     if (room && room.status === "playing") {
       try {
-        if (this.resolveExpiredTurnTimer(roomId, room)) return;
+        if (!options.skipTimerResolution && this.resolveExpiredTurnTimer(roomId, room)) return;
         if (this.isGamePaused(room, socketId)) return;
         const playerId = this.getPlayerId(socketId);
         this.assertExpectedStateVersion(room.gameState, payload);
@@ -1048,49 +1429,62 @@ export class RoomManager {
         const newState = GameEngine.processCatchMakao(room.gameState, playerId, payload?.targetPlayerId);
         GameEngine.recordHistory(newState, "catch_makao", {
           playerId,
-          details: { targetPlayerId: payload?.targetPlayerId, amount: penalty }
+          details: {
+            ...(payload?.actionId ? { actionId: payload.actionId } : {}),
+            targetPlayerId: payload?.targetPlayerId,
+            amount: penalty
+          }
         });
         room.gameState = newState;
-        this.finalizeGameMutation(roomId, room);
+        this.finalizeGameMutation(roomId, room, options);
       } catch (err) {
-        this.recordRejectedGameAction(room, "catch_makao", this.getPlayerId(socketId), err, payload);
+        if (!options.suppressRejectedAudit) {
+          this.recordRejectedGameAction(room, "catch_makao", this.getPlayerId(socketId), err, payload);
+        }
         this.io.to(socketId).emit(EVENTS.ERROR, { message: err.message });
+        if (options.rethrowErrors) throw err;
       }
     }
   }
 
-  handlePassTurn(socketId) {
+  handlePassTurn(socketId, payload = {}, options = {}) {
     const roomId = this.playerRooms.get(socketId);
     if (!roomId) return;
     const room = this.rooms.get(roomId);
     if (room && room.status === "playing") {
       try {
-        if (this.resolveExpiredTurnTimer(roomId, room)) return;
+        if (!options.skipTimerResolution && this.resolveExpiredTurnTimer(roomId, room)) return;
         if (this.isGamePaused(room, socketId)) return;
         const playerId = this.getPlayerId(socketId);
         const requestEffectBefore = this.snapshotRequestEffect(room.gameState.activeEffect);
         const newState = GameEngine.processPassTurn(room.gameState, playerId);
         GameEngine.recordHistory(newState, "pass_turn", {
           playerId,
-          details: this.resolvedRequestDetails(requestEffectBefore, newState.activeEffect)
+          details: {
+            ...(payload?.actionId ? { actionId: payload.actionId } : {}),
+            ...this.resolvedRequestDetails(requestEffectBefore, newState.activeEffect)
+          }
         });
         room.gameState = newState;
-        this.finalizeGameMutation(roomId, room);
+        this.finalizeGameMutation(roomId, room, options);
       } catch (err) {
-        this.recordRejectedGameAction(room, "pass_turn", this.getPlayerId(socketId), err);
+        if (!options.suppressRejectedAudit) {
+          this.recordRejectedGameAction(room, "pass_turn", this.getPlayerId(socketId), err, payload);
+        }
         this.io.to(socketId).emit(EVENTS.ERROR, { message: err.message });
+        if (options.rethrowErrors) throw err;
       }
     }
   }
 
-  handlePauseGame(socketId) {
+  handlePauseGame(socketId, payload = {}, options = {}) {
     const roomId = this.playerRooms.get(socketId);
     if (!roomId) return;
     const room = this.rooms.get(roomId);
     if (!room || room.status !== "playing" || !room.gameState || room.gameState.gameOver) return;
 
     try {
-      if (this.resolveExpiredTurnTimer(roomId, room)) return;
+      if (!options.skipTimerResolution && this.resolveExpiredTurnTimer(roomId, room)) return;
       const playerId = this.getPlayerId(socketId);
       const state = room.gameState;
       if (state.paused) {
@@ -1108,15 +1502,23 @@ export class RoomManager {
       });
       GameEngine.recordHistory(state, "game_paused", {
         playerId,
-        details: { reason: "manual" }
+        details: {
+          ...(payload?.actionId ? { actionId: payload.actionId } : {}),
+          reason: "manual"
+        }
       });
-      this.broadcastGameUpdate(roomId);
+      this.commitRoomState(roomId, {
+        persist: options.persist !== false,
+        emitRoom: false,
+        emitGame: options.emitGame !== false
+      });
     } catch (err) {
       this.io.to(socketId).emit(EVENTS.ERROR, { message: err.message });
+      if (options.rethrowErrors) throw err;
     }
   }
 
-  handleResumeGame(socketId, payload = {}) {
+  handleResumeGame(socketId, payload = {}, options = {}) {
     const roomId = this.playerRooms.get(socketId);
     if (!roomId) return;
     const room = this.rooms.get(roomId);
@@ -1152,7 +1554,11 @@ export class RoomManager {
       });
       GameEngine.recordHistory(state, "game_resumed", {
         playerId,
-        details: { pausedPlayerId, forcedByHost: isHostOverride }
+        details: {
+          ...(payload?.actionId ? { actionId: payload.actionId } : {}),
+          pausedPlayerId,
+          forcedByHost: isHostOverride
+        }
       });
       if (isHostOverride) {
         this.recordAdminLog(room, "host_forced_resume", {
@@ -1162,9 +1568,14 @@ export class RoomManager {
           details: { reason: "manual_pause_override" }
         });
       }
-      this.broadcastGameUpdate(roomId);
+      this.commitRoomState(roomId, {
+        persist: options.persist !== false,
+        emitRoom: false,
+        emitGame: options.emitGame !== false
+      });
     } catch (err) {
       this.io.to(socketId).emit(EVENTS.ERROR, { message: err.message });
+      if (options.rethrowErrors) throw err;
     }
   }
 
@@ -1191,8 +1602,7 @@ export class RoomManager {
       });
 
       this.recordCompletedGameStats(room);
-      this.broadcastRoomUpdate(roomId);
-      this.broadcastGameUpdate(roomId);
+      this.commitRoomState(roomId);
     } catch (err) {
       this.sendError(socketId, err.message);
     }
@@ -1316,8 +1726,7 @@ export class RoomManager {
         details: { scenario, nodePlayerId, phonePlayerId }
       });
 
-      this.broadcastRoomUpdate(roomId);
-      this.broadcastGameUpdate(roomId);
+      this.commitRoomState(roomId);
       callback?.({
         success: true,
         roomId,
@@ -1439,6 +1848,15 @@ export class RoomManager {
         this.debugCard("live_node_missing_10_spades", "10", "spades")
       ];
       state.makao[nodePlayerId] = { declared: false, canBeCaughtAt: now - 1000 };
+    } else if (scenario === "node_missing_makao_window_expired") {
+      state.hands[nodePlayerId] = [
+        this.debugCard("live_node_missing_expired_10_spades", "10", "spades")
+      ];
+      state.makao[nodePlayerId] = {
+        declared: false,
+        canBeCaughtAt: now - 2000,
+        catchUntil: now - 1000
+      };
     } else if (scenario === "rule_penalty_war_counter") {
       state.topCard = this.debugCard("live_rule_top_2_hearts", "2", "hearts");
       state.activeEffect = {
@@ -1898,25 +2316,390 @@ export class RoomManager {
     if (!Number.isFinite(expected) || expected <= 0) return;
     const current = Number(state?.stateVersion || 0);
     if (current > 0 && expected !== current) {
-      throw new Error("Stan gry zmienił się. Spróbuj ponownie.");
+      const error = new Error("Stan gry zmienił się. Trwa synchronizacja z serwerem.");
+      error.code = "STATE_VERSION_MISMATCH";
+      throw error;
     }
+  }
+
+  hasOnlyConnectionChangesSince(state, expectedVersion) {
+    const currentVersion = Number(state?.stateVersion || 0);
+    if (expectedVersion === currentVersion) return true;
+    if (!Number.isFinite(expectedVersion) || expectedVersion <= 0 || expectedVersion > currentVersion) return false;
+
+    const changes = (state?.moveHistory || [])
+      .filter(entry => Number(entry?.version || 0) > expectedVersion)
+      .sort((a, b) => a.version - b.version);
+    if (changes.length !== currentVersion - expectedVersion) return false;
+    return changes.every(entry => CONNECTION_ONLY_HISTORY_TYPES.has(entry.type));
+  }
+
+  captureReliableMutationSnapshot(room) {
+    const roomFieldNames = [
+      "status",
+      "stats",
+      "lastStatsRecordedGameNumber",
+      "adminLog",
+      "auditLog",
+      "gameNumber",
+      "lastFirstPlayerId",
+      "nextGameFirstPlayerId"
+    ];
+    return {
+      gameState: structuredClone(room.gameState),
+      roomFields: Object.fromEntries(roomFieldNames.map(field => [field, {
+        present: Object.hasOwn(room, field),
+        value: structuredClone(room[field])
+      }]))
+    };
+  }
+
+  restoreReliableMutationSnapshot(room, snapshot) {
+    const restoredState = structuredClone(snapshot.gameState);
+    if (room.gameState && typeof room.gameState === "object") {
+      for (const key of Object.keys(room.gameState)) delete room.gameState[key];
+      Object.assign(room.gameState, restoredState);
+    } else {
+      room.gameState = restoredState;
+    }
+
+    for (const [field, saved] of Object.entries(snapshot.roomFields)) {
+      if (saved.present) {
+        room[field] = structuredClone(saved.value);
+      } else {
+        delete room[field];
+      }
+    }
+  }
+
+  findReliableActionResult(room, playerId, actionId) {
+    const receipt = (room?.actionReceipts || []).find(entry =>
+      entry.playerId === playerId && entry.actionId === actionId
+    );
+    if (receipt) {
+      return {
+        ...receipt,
+        duplicate: true,
+        stateVersion: room?.gameState?.stateVersion || receipt.stateVersion
+      };
+    }
+
+    const historyEntry = (room?.gameState?.moveHistory || []).find(entry =>
+      entry.playerId === playerId && entry.details?.actionId === actionId
+    );
+    if (!historyEntry) return null;
+    return {
+      success: true,
+      status: "accepted",
+      duplicate: true,
+      actionId,
+      actionType: historyEntry.type,
+      playerId,
+      stateVersion: room?.gameState?.stateVersion || historyEntry.version
+    };
+  }
+
+  recordReliableActionResult(room, result, { persist = true } = {}) {
+    if (!room) return result;
+    if (!Array.isArray(room.actionReceipts)) room.actionReceipts = [];
+    room.actionReceipts = room.actionReceipts.filter(entry =>
+      !(entry.playerId === result.playerId && entry.actionId === result.actionId)
+    );
+    room.actionReceipts.push(result);
+    room.actionReceipts = room.actionReceipts.slice(-ACTION_RECEIPT_LIMIT);
+    if (persist) this.persistRooms();
+    return result;
+  }
+
+  async handleReliableGameAction(socketId, envelope = {}, callback = () => {}) {
+    const respond = typeof callback === "function" ? callback : () => {};
+    let room;
+    let roomId;
+    let playerId;
+    let pendingActionKey = null;
+    let resolvePendingAction = null;
+    let reliableMutationSnapshot = null;
+    let reliableMutationAccepted = false;
+    let independentPersistenceRevision = 0;
+    const beginPendingAction = (key) => {
+      pendingActionKey = key;
+      const pendingResult = new Promise(resolve => {
+        resolvePendingAction = resolve;
+      });
+      this.pendingReliableActions.set(key, pendingResult);
+    };
+    const settlePendingAction = (result) => {
+      if (!resolvePendingAction) return;
+      this.pendingReliableActions.delete(pendingActionKey);
+      resolvePendingAction(result);
+      resolvePendingAction = null;
+    };
+
+    try {
+      ({ roomId, room, playerId } = this.getRoomForSocket(socketId));
+      if (room.status !== "playing" || !room.gameState) {
+        throw new Error("Nie ma aktywnej partii.");
+      }
+
+      const actionId = String(envelope?.actionId || "").trim();
+      const actionType = String(envelope?.actionType || "").trim();
+      if (!actionId || actionId.length > 120) {
+        const error = new Error("Brak prawidłowego identyfikatora akcji.");
+        error.code = "INVALID_ACTION_ID";
+        throw error;
+      }
+      if (!RELIABLE_GAME_ACTIONS.has(actionType)) {
+        const error = new Error("Nieobsługiwany typ akcji gry.");
+        error.code = "INVALID_ACTION_TYPE";
+        throw error;
+      }
+
+      const actionKey = `${roomId}\u0000${playerId}\u0000${actionId}`;
+      const pendingAction = this.pendingReliableActions.get(actionKey);
+      if (pendingAction) {
+        const pendingResult = await pendingAction;
+        const concurrentResult = pendingResult.success
+          ? {
+              ...pendingResult,
+              duplicate: true,
+              stateVersion: room.gameState.stateVersion || pendingResult.stateVersion
+            }
+          : pendingResult;
+        respond(concurrentResult);
+        return concurrentResult;
+      }
+
+      const duplicate = this.findReliableActionResult(room, playerId, actionId);
+      if (duplicate) {
+        const storedReceipt = (room.actionReceipts || []).find(entry =>
+          entry.playerId === playerId && entry.actionId === actionId
+        );
+        if (storedReceipt && !this.durableActionReceipts.has(storedReceipt) && this.stateFile) {
+          beginPendingAction(actionKey);
+          this.markRoomActivity(room);
+          const persistenceRevision = this.persistRooms();
+          await this.flushPersistence(persistenceRevision);
+          this.durableActionReceipts.add(storedReceipt);
+        } else if (storedReceipt) {
+          this.durableActionReceipts.add(storedReceipt);
+        }
+        this.broadcastRoomUpdate(roomId, { persist: false, touchActivity: false });
+        this.broadcastGameUpdate(roomId, { persist: false, touchActivity: false });
+        settlePendingAction(duplicate);
+        respond(duplicate);
+        return duplicate;
+      }
+
+      if (this.resolveExpiredTurnTimer(roomId, room)) {
+        independentPersistenceRevision = this.persistenceRequestedRevision;
+        const error = new Error("Stan gry zmienił się po rozstrzygnięciu limitu rozłączenia.");
+        error.code = "STATE_VERSION_MISMATCH";
+        throw error;
+      }
+
+      beginPendingAction(actionKey);
+
+      const expectedStateVersion = Number(envelope?.expectedStateVersion || 0);
+      const currentStateVersion = Number(room.gameState.stateVersion || 0);
+      if (
+        expectedStateVersion > 0 &&
+        expectedStateVersion !== currentStateVersion &&
+        !this.hasOnlyConnectionChangesSince(room.gameState, expectedStateVersion)
+      ) {
+        const error = new Error("Stan gry zmienił się. Trwa synchronizacja z serwerem.");
+        error.code = "STATE_VERSION_MISMATCH";
+        throw error;
+      }
+
+      const payload = {
+        ...(envelope?.data && typeof envelope.data === "object" ? envelope.data : {}),
+        actionId,
+        expectedStateVersion: currentStateVersion
+      };
+      const reliableMutationOptions = {
+        persist: false,
+        emitRoom: false,
+        emitGame: false,
+        rethrowErrors: true,
+        suppressRejectedAudit: true,
+        skipTimerResolution: true
+      };
+      reliableMutationSnapshot = this.captureReliableMutationSnapshot(room);
+
+      switch (actionType) {
+        case EVENTS.PLAY_CARDS:
+          this.handlePlayCards(socketId, payload, reliableMutationOptions);
+          break;
+        case EVENTS.DRAW_CARD:
+          this.handleDrawCard(socketId, payload, reliableMutationOptions);
+          break;
+        case EVENTS.ACCEPT_SKIP:
+          this.handleAcceptSkip(socketId, payload, reliableMutationOptions);
+          break;
+        case EVENTS.DECLARE_MAKAO:
+          this.handleDeclareMakao(socketId, payload, reliableMutationOptions);
+          break;
+        case EVENTS.CATCH_MAKAO:
+          this.handleCatchMakao(socketId, payload, reliableMutationOptions);
+          break;
+        case EVENTS.PASS_TURN:
+          this.handlePassTurn(socketId, payload, reliableMutationOptions);
+          break;
+        case EVENTS.PAUSE_GAME:
+          this.handlePauseGame(socketId, payload, reliableMutationOptions);
+          break;
+        case EVENTS.RESUME_GAME:
+          this.handleResumeGame(socketId, payload, reliableMutationOptions);
+          break;
+        default:
+          break;
+      }
+
+      const acceptedHistory = (room.gameState?.moveHistory || []).find(entry =>
+        entry.playerId === playerId && entry.details?.actionId === actionId
+      );
+      if (!acceptedHistory) {
+        const error = new Error("Serwer odrzucił akcję. Stan gry został odświeżony.");
+        error.code = "ACTION_REJECTED";
+        throw error;
+      }
+
+      const result = this.recordReliableActionResult(room, {
+        success: true,
+        status: "accepted",
+        duplicate: false,
+        actionId,
+        actionType,
+        playerId,
+        stateVersion: room.gameState.stateVersion
+      }, { persist: false });
+      reliableMutationAccepted = true;
+      this.ensureOnlineHost(room);
+      this.markRoomActivity(room);
+      const persistenceRevision = this.persistRooms();
+      if (persistenceRevision) {
+        await this.flushPersistence(persistenceRevision);
+      }
+      this.durableActionReceipts.add(result);
+      this.broadcastRoomUpdate(roomId, { persist: false, touchActivity: false });
+      this.broadcastGameUpdate(roomId, { persist: false, touchActivity: false });
+      settlePendingAction(result);
+      respond(result);
+      return result;
+    } catch (err) {
+      let responseError = err;
+      let persistenceRevision = independentPersistenceRevision;
+      if (room && reliableMutationSnapshot && !reliableMutationAccepted) {
+        this.restoreReliableMutationSnapshot(room, reliableMutationSnapshot);
+        this.recordRejectedGameAction(
+          room,
+          String(envelope?.actionType || "game_action"),
+          playerId,
+          err,
+          envelope?.data
+        );
+        this.markRoomActivity(room);
+        persistenceRevision = this.persistRooms();
+      }
+      if (!err.persistenceAttempted && persistenceRevision) {
+        try {
+          await this.flushPersistence(persistenceRevision);
+        } catch (persistenceError) {
+          responseError = persistenceError;
+        }
+      }
+      const response = {
+        success: false,
+        status: "rejected",
+        actionId: envelope?.actionId || null,
+        actionType: envelope?.actionType || null,
+        code: responseError.code || "ACTION_REJECTED",
+        error: responseError.message,
+        stateVersion: room?.gameState?.stateVersion || null,
+        retryable: responseError.code === "PERSISTENCE_FAILED"
+      };
+      if (
+        roomId &&
+        room?.gameState &&
+        responseError.code !== "PERSISTENCE_FAILED"
+      ) {
+        this.broadcastGameUpdate(roomId, { persist: false, touchActivity: false });
+      }
+      settlePendingAction(response);
+      respond(response);
+      return response;
+    }
+  }
+
+  truncateRejectedAuditText(value, maxBytes) {
+    if (value === undefined || value === null) return undefined;
+    if (!["string", "number", "boolean"].includes(typeof value)) return undefined;
+    const normalized = String(value).replace(/[\u0000-\u001f\u007f]/g, " ").trim();
+    const encoded = Buffer.from(normalized, "utf8");
+    if (encoded.length <= maxBytes) return normalized;
+    return encoded.subarray(0, maxBytes).toString("utf8").replace(/\uFFFD$/u, "");
+  }
+
+  getRejectedAuditDetails(err, payload = {}) {
+    const rawCardIds = Array.isArray(payload?.cardIds) ? payload.cardIds : [];
+    const cardIds = rawCardIds
+      .slice(0, REJECTED_AUDIT_CARD_ID_LIMIT)
+      .map(cardId => this.truncateRejectedAuditText(cardId, REJECTED_AUDIT_ID_MAX_BYTES))
+      .filter(cardId => cardId !== undefined);
+
+    const rawJokerDeclarations = payload?.jokerDeclarations
+      && typeof payload.jokerDeclarations === "object"
+      && !Array.isArray(payload.jokerDeclarations)
+      ? Object.entries(payload.jokerDeclarations)
+      : [];
+    const jokerDeclarations = rawJokerDeclarations
+      .slice(0, REJECTED_AUDIT_JOKER_LIMIT)
+      .map(([cardInstanceId, declaration]) => ({
+        cardInstanceId: this.truncateRejectedAuditText(cardInstanceId, REJECTED_AUDIT_ID_MAX_BYTES),
+        rank: this.truncateRejectedAuditText(declaration?.rank, REJECTED_AUDIT_VALUE_MAX_BYTES),
+        suit: this.truncateRejectedAuditText(declaration?.suit, REJECTED_AUDIT_VALUE_MAX_BYTES)
+      }))
+      .filter(declaration => declaration.cardInstanceId !== undefined);
+
+    const expectedStateVersion = Number(payload?.expectedStateVersion);
+    const safePayload = {
+      cardIds,
+      cardIdCount: rawCardIds.length,
+      cardIdsTruncated: rawCardIds.length > cardIds.length,
+      targetPlayerId: this.truncateRejectedAuditText(payload?.targetPlayerId, REJECTED_AUDIT_ID_MAX_BYTES),
+      expectedStateVersion: Number.isFinite(expectedStateVersion) ? expectedStateVersion : undefined,
+      suitRequest: this.truncateRejectedAuditText(payload?.suitRequest, REJECTED_AUDIT_VALUE_MAX_BYTES),
+      rankRequest: this.truncateRejectedAuditText(payload?.rankRequest, REJECTED_AUDIT_VALUE_MAX_BYTES),
+      jokerDeclarations,
+      jokerDeclarationCount: rawJokerDeclarations.length,
+      jokerDeclarationsTruncated: rawJokerDeclarations.length > jokerDeclarations.length
+    };
+    const details = {
+      error: this.truncateRejectedAuditText(err?.message, REJECTED_AUDIT_ERROR_MAX_BYTES)
+        || "Rejected game action.",
+      payload: safePayload
+    };
+
+    while (
+      Buffer.byteLength(JSON.stringify(details), "utf8") > REJECTED_AUDIT_DETAILS_MAX_BYTES
+      && (safePayload.cardIds.length > 0 || safePayload.jokerDeclarations.length > 0)
+    ) {
+      if (safePayload.cardIds.length >= safePayload.jokerDeclarations.length) {
+        safePayload.cardIds.pop();
+        safePayload.cardIdsTruncated = true;
+      } else {
+        safePayload.jokerDeclarations.pop();
+        safePayload.jokerDeclarationsTruncated = true;
+      }
+    }
+    return details;
   }
 
   recordRejectedGameAction(room, type, playerId, err, payload = {}) {
     if (!room?.gameState) return;
     GameEngine.recordAudit(room.gameState, "rule_validation_log", `${type}_rejected`, {
       playerId,
-      details: {
-        error: err.message,
-        payload: {
-          cardIds: Array.isArray(payload?.cardIds) ? [...payload.cardIds] : undefined,
-          targetPlayerId: payload?.targetPlayerId,
-          expectedStateVersion: payload?.expectedStateVersion,
-          suitRequest: payload?.suitRequest,
-          rankRequest: payload?.rankRequest,
-          jokerDeclarations: payload?.jokerDeclarations ? { ...payload.jokerDeclarations } : undefined
-        }
-      }
+      details: this.getRejectedAuditDetails(err, payload)
     });
   }
 
@@ -1951,8 +2734,15 @@ export class RoomManager {
       const wasPlaying = room.status === "playing";
       const player = room.players.find(p => p.id === playerId);
       if (player) {
+        if (player.socketId !== socketId) {
+          this.playerRooms.delete(socketId);
+          this.socketPlayers.delete(socketId);
+          this.pendingResumeTokens.delete(socketId);
+          return;
+        }
         player.isOnline = false;
         player.socketId = null;
+        player.isReady = false;
         this.recordRoomAuditLog(room, "connection_log", "player_disconnected", {
           actorPlayerId: playerId,
           details: { roomStatus: room.status }
@@ -1960,19 +2750,17 @@ export class RoomManager {
       }
       this.playerRooms.delete(socketId);
       this.socketPlayers.delete(socketId);
+      this.pendingResumeTokens.delete(socketId);
       
       if (room.players.length === 0) {
         this.rooms.delete(roomId);
+        this.persistRooms();
       } else {
-        if (room.hostId === playerId) {
-          const onlineHost = room.players.find(p => p.isOnline);
-          if (onlineHost) room.hostId = onlineHost.id;
-        }
-        if (wasPlaying && room.gameState) {
+        this.ensureOnlineHost(room);
+        if (wasPlaying && room.gameState && !room.gameState.gameOver) {
           this.markDisconnectedPlayer(room, playerId);
         }
-        this.broadcastRoomUpdate(roomId);
-        if (wasPlaying) this.broadcastGameUpdate(roomId);
+        this.commitRoomState(roomId, { emitGame: wasPlaying });
       }
     }
   }
@@ -2026,7 +2814,20 @@ export class RoomManager {
   }
 
   publicPlayers(room) {
-    return room.players.map(({ socketId, ...player }) => player);
+    return room.players.map(({
+      socketId,
+      resumeTokenHash,
+      resumeTokenRequired,
+      ...player
+    }) => player);
+  }
+
+  getPublicSettings(room) {
+    return {
+      ...DEFAULT_SETTINGS,
+      ...this.sanitizeSettings(room?.settings || {}, room),
+      allowMultipleCards: room?.settings?.allowMultipleCards !== false
+    };
   }
 
   getPublicRoomStats(room) {
@@ -2048,7 +2849,7 @@ export class RoomManager {
       id: room.id,
       name: room.name,
       hostId: room.hostId,
-      settings: room.settings,
+      settings: this.getPublicSettings(room),
       recommendedDeckCount: this.getRecommendedDeckCount(room),
       gameNumber: room.gameNumber || 0,
       lastFirstPlayerId: room.lastFirstPlayerId || null,
@@ -2062,30 +2863,67 @@ export class RoomManager {
     };
   }
 
-  broadcastRoomUpdate(roomId) {
+  commitRoomState(roomId, { persist = true, emitRoom = true, emitGame = true } = {}) {
+    const room = this.rooms.get(roomId);
+    if (!room) return 0;
+    this.ensureOnlineHost(room);
+    this.markRoomActivity(room);
+    const persistenceRevision = persist ? this.persistRooms() : 0;
+    if (emitRoom) {
+      this.broadcastRoomUpdate(roomId, { persist: false, touchActivity: false });
+    }
+    if (emitGame && room.gameState) {
+      this.broadcastGameUpdate(roomId, { persist: false, touchActivity: false });
+    }
+    return persistenceRevision;
+  }
+
+  broadcastRoomUpdate(roomId, { persist = true, touchActivity = true } = {}) {
     const room = this.rooms.get(roomId);
     if (room) {
+      this.ensureOnlineHost(room);
+      if (touchActivity) this.markRoomActivity(room);
+      if (persist) this.persistRooms();
       // Pokaż graczom stan pokoju (bez pełnego gameState na tym etapie dla optymalizacji lobby)
       this.io.to(roomId).emit(EVENTS.ROOM_STATE_UPDATE, this.getPublicRoomInfo(room));
     }
   }
 
-  broadcastGameUpdate(roomId) {
+  broadcastGameUpdate(roomId, { persist = true, touchActivity = true } = {}) {
     const room = this.rooms.get(roomId);
     if (room && room.gameState) {
+      if (touchActivity) this.markRoomActivity(room);
+      if (persist) this.persistRooms();
       // Każdy gracz powinien otrzymać tylko swoje karty z gameState.hands
       // Ale dla uproszczenia (trust-based system, lub wysyłanie odpowiedniego stanu do każdego gracza):
       
-      const { hands, drawPile, discardPile, privateDealLog, auditLog, stateSnapshots, ...publicGameState } = room.gameState;
+      const {
+        hands,
+        drawPile,
+        discardPile,
+        inactiveDepartedCards,
+        privateDealLog,
+        auditLog,
+        stateSnapshots,
+        ...publicGameState
+      } = room.gameState;
       const handCounts = {};
       for (const [pid, cards] of Object.entries(hands)) {
         handCounts[pid] = cards.length;
       }
       const players = this.publicPlayers(room);
+      const serverNow = Date.now();
+      const moveHistory = (publicGameState.moveHistory || []).map(entry => {
+        const { actionId: _actionId, ...details } = entry.details || {};
+        return { ...entry, details };
+      });
       
       room.players.filter(p => p.socketId).forEach(p => {
         const playerState = {
           ...publicGameState,
+          moveHistory,
+          myPlayerId: p.id,
+          serverNow,
           players,
           drawPileCount: drawPile?.length || 0,
           discardPileCount: discardPile?.length || 0,

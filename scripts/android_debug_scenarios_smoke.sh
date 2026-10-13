@@ -4,9 +4,9 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/Android/Sdk}}"
 PACKAGE_NAME="pl.makao.zeznajomymi"
-ACTIVITY_NAME="$PACKAGE_NAME/.MakaoNativeActivity"
+ACTIVITY_NAME="$PACKAGE_NAME/.MakaoNativeTestLauncherActivity"
 SERVER_URL="http://127.0.0.1:9"
-SCENARIOS="ace_request_panel,jack_request_panel,joker_declaration_panel,own_missing_makao,opponent_catch_makao,opponent_play_history,opponent_draw_history,opponent_penalty_history,opponent_skip_history,opponent_catch_history,opponent_request_pass_history,opponent_request_resolve_history,badge_suit_request,badge_rank_request,badge_draw_penalty,badge_warsaw_queen_penalty,badge_skip_turn,badge_joker_context,local_draw_from_deck,local_throw_to_stack,manual_throw_gesture,multi_opponent_table,multi_opponent_bubbles,hand_focus_reveal,hand_idle_peek,sort_hand"
+SCENARIOS="ace_request_panel,jack_request_panel,joker_declaration_panel,joker_skip_response_panel,own_missing_makao,opponent_catch_makao,opponent_play_history,opponent_draw_history,opponent_penalty_history,opponent_skip_history,opponent_catch_history,opponent_request_pass_history,opponent_request_resolve_history,badge_suit_request,badge_rank_request,badge_draw_penalty,badge_warsaw_queen_penalty,badge_skip_turn,badge_joker_context,local_draw_from_deck,local_throw_to_stack,manual_throw_gesture,multi_opponent_table,multi_opponent_bubbles,hand_focus_reveal,hand_idle_peek,sort_hand"
 WAIT_SEC="5"
 OUT_DIR=""
 SKIP_BUILD=0
@@ -85,9 +85,11 @@ if [ -z "$OUT_DIR" ]; then
 fi
 mkdir -p "$OUT_DIR"
 
-APK="$PROJECT_DIR/frontend/android/app/build/outputs/apk/debug/app-debug.apk"
+APK="$("$PROJECT_DIR/scripts/android_apk_path.sh" debug)"
 SUMMARY_FILE="$OUT_DIR/summary.txt"
-ERROR_PATTERN='FATAL EXCEPTION| E AndroidRuntime|UnsatisfiedLinkError|ClassNotFoundException|NoClassDefFoundError|NullPointerException|SecurityException|ANR|Mixed Content|TypeError|ReferenceError|ERR_'
+ERROR_PATTERN='FATAL EXCEPTION|AndroidRuntime|UnsatisfiedLinkError|ClassNotFoundException|NoClassDefFoundError|NullPointerException|SecurityException|ANR|Mixed Content|Capacitor/Console|TypeError|ReferenceError|ERR_'
+LOGCAT_SINCE=""
+APP_PIDS=""
 
 echo "Device: ${DEVICE_ID:-unknown}" | tee "$SUMMARY_FILE"
 echo "Server URL: $SERVER_URL" | tee -a "$SUMMARY_FILE"
@@ -105,8 +107,36 @@ wake_device() {
   adb shell svc power stayon true >/dev/null 2>&1 || true
   adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
   adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
-  adb shell input keyevent 82 >/dev/null 2>&1 || true
+  adb shell cmd statusbar collapse >/dev/null 2>&1 || true
   sleep 1
+}
+
+reset_logcat_window() {
+  adb logcat -c || true
+  LOGCAT_SINCE="$(adb shell "date '+%m-%d %H:%M:%S.000'" 2>/dev/null | tr -d '\r')"
+  APP_PIDS=""
+}
+
+remember_app_pids() {
+  local current_pids
+  current_pids="$(adb shell pidof "$PACKAGE_NAME" 2>/dev/null | tr -d '\r' || true)"
+  if [ -n "$current_pids" ]; then
+    APP_PIDS="$(printf '%s\n%s\n' "$APP_PIDS" "$current_pids" | tr ' ' '\n' | awk 'NF && !seen[$0]++' | paste -sd, -)"
+  fi
+}
+
+capture_app_logcat() {
+  local output_file="$1"
+  remember_app_pids
+  if [ -n "$LOGCAT_SINCE" ]; then
+    adb logcat -d -v threadtime -T "$LOGCAT_SINCE" \
+      | node "$PROJECT_DIR/scripts/android_logcat_filter.mjs" --package "$PACKAGE_NAME" --pids "$APP_PIDS" \
+      > "$output_file"
+  else
+    adb logcat -d -v threadtime \
+      | node "$PROJECT_DIR/scripts/android_logcat_filter.mjs" --package "$PACKAGE_NAME" --pids "$APP_PIDS" \
+      > "$output_file"
+  fi
 }
 
 assert_process_running() {
@@ -231,7 +261,7 @@ capture_log_and_screen() {
   local screen_file="$OUT_DIR/$name.png"
 
   wake_device
-  adb logcat -d > "$log_file"
+  capture_app_logcat "$log_file"
   adb exec-out screencap -p > "$screen_file"
   assert_process_running
   assert_png "$screen_file"
@@ -247,11 +277,12 @@ capture_log_and_screen() {
 launch_scenario() {
   local scenario="$1"
   wake_device
-  adb logcat -c || true
+  reset_logcat_window
   adb shell am start -S -n "$ACTIVITY_NAME" \
     --es debugScenario "$scenario" \
     --es serverUrl "$SERVER_URL" \
     --es playerName Codex >/dev/null
+  remember_app_pids
   sleep "$WAIT_SEC"
   capture_log_and_screen "$scenario"
 }
@@ -259,11 +290,12 @@ launch_scenario() {
 launch_for_interaction() {
   local scenario="$1"
   wake_device
-  adb logcat -c || true
+  reset_logcat_window
   adb shell am start -S -n "$ACTIVITY_NAME" \
     --es debugScenario "$scenario" \
     --es serverUrl "$SERVER_URL" \
     --es playerName Codex >/dev/null
+  remember_app_pids
   sleep "$WAIT_SEC"
 }
 
@@ -358,10 +390,11 @@ for scenario in "${SCENARIO_LIST[@]}"; do
   fi
 done
 
-adb logcat -c || true
+reset_logcat_window
 adb shell am start -S -n "$ACTIVITY_NAME" \
   --es serverUrl "$SERVER_URL" \
   --es playerName Codex >/dev/null
+remember_app_pids
 sleep "$WAIT_SEC"
 capture_log_and_screen "normal-no-debug"
 

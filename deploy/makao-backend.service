@@ -9,6 +9,7 @@ Group=makao
 WorkingDirectory=/opt/makao/backend
 Environment=NODE_ENV=production
 Environment=PORT=3001
+Environment=MAKAO_STATE_FILE=/opt/makao/data/rooms.json
 ExecStart=/usr/bin/node /opt/makao/backend/server.js
 Restart=always
 RestartSec=5

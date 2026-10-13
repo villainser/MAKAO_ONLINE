@@ -1,14 +1,46 @@
 apply plugin: 'com.android.application'
 
+def makaoVersionFile = rootProject.file('version.properties')
+if (!makaoVersionFile.isFile()) {
+    throw new GradleException("Missing Android version file: ${makaoVersionFile}")
+}
+def makaoVersionProperties = new Properties()
+makaoVersionFile.withInputStream { makaoVersionProperties.load(it) }
+def makaoVersionCodeText = makaoVersionProperties.getProperty('VERSION_CODE', '').trim()
+def makaoVersionName = makaoVersionProperties.getProperty('VERSION_NAME', '').trim()
+if (!(makaoVersionCodeText ==~ /[1-9][0-9]*/)) {
+    throw new GradleException('VERSION_CODE must be a positive integer in version.properties')
+}
+if (!(makaoVersionName ==~ /[0-9]+\.[0-9]+\.[0-9]+/)) {
+    throw new GradleException('VERSION_NAME must use semantic x.y.z format in version.properties')
+}
+def makaoVersionCode = makaoVersionCodeText.toInteger()
+
+// Deployment default; players can change the server in the app settings.
+def makaoDefaultServerUrl = (project.findProperty('makaoServerUrl') ?: System.getenv('VITE_SERVER_URL') ?: '').toString().trim()
+if (!makaoDefaultServerUrl) {
+    throw new GradleException('Set VITE_SERVER_URL or -PmakaoServerUrl to the initial game server URL')
+}
+def makaoServerUri = new URI(makaoDefaultServerUrl)
+if (!(makaoServerUri.scheme in ['http', 'https']) || !makaoServerUri.host || makaoServerUri.userInfo) {
+    throw new GradleException('The initial game server must be an HTTP(S) URL without credentials')
+}
+
+def makaoRetiredServerUrls = (project.findProperty('makaoRetiredServerUrls') ?: System.getenv('VITE_RETIRED_SERVER_URLS') ?: '').toString()
+
 android {
     namespace = "pl.makao.zeznajomymi"
     compileSdk = rootProject.ext.compileSdkVersion
+    buildFeatures { buildConfig true }
     defaultConfig {
+        buildConfigField "String", "MAKAO_DEFAULT_SERVER_URL", groovy.json.JsonOutput.toJson(makaoDefaultServerUrl)
+        buildConfigField "String", "MAKAO_RETIRED_SERVER_URLS", groovy.json.JsonOutput.toJson(makaoRetiredServerUrls)
+        manifestPlaceholders = [makaoAppLinkHost: makaoServerUri.host]
         applicationId "pl.makao.zeznajomymi"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode makaoVersionCode
+        versionName makaoVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -26,6 +58,12 @@ android {
         main {
             jniLibs.srcDirs += ["$buildDir/generated/gdxNatives"]
         }
+    }
+}
+
+android.applicationVariants.configureEach { variant ->
+    variant.outputs.configureEach { output ->
+        output.outputFileName = "Makao-v${variant.versionName}-build${variant.versionCode}-${variant.buildType.name}.apk"
     }
 }
 

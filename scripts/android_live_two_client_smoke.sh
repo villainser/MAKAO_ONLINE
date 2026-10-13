@@ -15,7 +15,7 @@ Usage: scripts/android_live_two_client_smoke.sh [options]
 
 Runs a local two-client smoke:
   - backend with MAKAO_ENABLE_TEST_HOOKS=1 on a local port,
-  - Samsung/native Android client as one player,
+  - native Android client as one player,
   - Node/socket.io driver as the second player.
 
 Options:
@@ -26,7 +26,7 @@ Options:
   --skip-install   Do not reinstall APK.
   -h, --help       Show this help.
 
-Set ANDROID_SERIAL=5200df2eee05549b to target the Samsung device explicitly.
+Set ANDROID_SERIAL to the device serial reported by adb devices -l.
 EOF
 }
 
@@ -82,7 +82,7 @@ fi
 HOST_IP="${HOST_IP:-127.0.0.1}"
 LOCAL_SERVER_URL="http://127.0.0.1:$PORT"
 ANDROID_SERVER_URL="http://$HOST_IP:$PORT"
-APK="$PROJECT_DIR/frontend/android/app/build/outputs/apk/debug/app-debug.apk"
+APK="$("$PROJECT_DIR/scripts/android_apk_path.sh" debug)"
 SUMMARY_FILE="$OUT_DIR/summary.txt"
 
 {
